@@ -1,7 +1,7 @@
 {
   "name": "kitten-jwt",
   "version": "0.1.0",
-  "description": "Keep It Simple, Stupid & Fast Asymmetric JWT. Generates ECDH keys, sign and verify",
+  "description": "Keep It Simple, Stupid, Secure and Fast JWT module",
   "main": "index.js",
   "scripts": {
     "test": "./node_modules/mocha/bin/mocha -w"
@@ -22,8 +22,5 @@
   "devDependencies": {
     "mocha": "5.2.0",
     "should": "8.2.1"
-  },
-  "dependencies": {
-    "ecdsa-sig-formatter": "^1.0.10"
   }
 }

@@ -1,6 +1,6 @@
 # Kitten JWT
 
-Keep It Simple, Stupid & Fast JWT sign and verify.
+Keep It Simple, Stupid, Secure and Fast JWT module
 
 Maintained by https://www.easilys.com and https://carbone.io
 
@@ -9,17 +9,16 @@ Maintained by https://www.easilys.com and https://carbone.io
 - Keep it Simple Stupid
 - Performance & Security focused
 - Light, virtually no dependencies (except kitten-cache) : TODO
-- Opinionated, forced ECDH 256 algortihm : TODO
 
 ## Features
 
-- Generate Public / Private keys
 - Generate JWT
 - Verify JWT
-- LRU Cache mechanism : TODO
+- Generate ECDH Public / Private keys
 - Automatic JWT renewal every 12-hours : TODO
+- LRU Cache mechanism : TODO
 - Fastify, Restify or Express authentication middleware
-- EC256 algorithm by default (opinionated) when there is no header in JWT : TODO
+- Highly secured by default with ECDH keys (secp521r1) : opinionated
 
 
 ## Installation

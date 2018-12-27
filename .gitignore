@@ -1,0 +1,45 @@
+####### OS X
+.DS_Store*
+Icon?
+._*
+
+
+####### Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+
+####### Linux
+.directory
+*~
+
+
+####### npm
+node_modules
+npm-debug.log
+
+
+####### IDE
+.emacs*
+*.flymake
+.#*
+.idea
+*.iml
+*.sublime-*
+.tern-port
+.vscode
+.vs
+
+####### LibreOffice & MS Office
+.~*
+~$*
+
+
+####### VCS
+*.orig
+*.rej
+package-lock.json
+
+
+######## project-specific

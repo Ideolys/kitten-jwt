@@ -111,6 +111,35 @@ describe('jsonWebToken', function () {
       }
       _middlewareFn(_req, {}, next);
     });
+    it('should accepts headers with lower case', function (done) {
+      let _clientId = '123';
+      let _serverId = 'service1';
+      let _expireIn = 10;
+      let _token        = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv2());
+
+      function getPublicKeyFn (req, res, payload, callback) {
+        should(payload.iss).equal(_clientId);
+        should(payload.aud).equal(_serverId);
+        // make it asynchrone
+        return setTimeout(() => {
+          callback(getECDHPublic2());
+        }, 0);
+      }
+      let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
+      let _req          = {
+        headers : {
+          authorization : 'bearer ' + _token
+        }
+      };
+      function next (err) {
+        should(err).be.undefined();
+        should(_req.jwtPayload.iss).equal(_clientId);
+        should(_req.jwtPayload.aud).equal(_serverId);
+        should(_req.jwtPayload.exp).be.approximately((Date.now()/1000)+_expireIn, 10);
+        done();
+      }
+      _middlewareFn(_req, {}, next);
+    });
     it('should return an error if http Authorization header is undefined', function (done) {
       let _clientId = '123';
       let _serverId = 'service1';

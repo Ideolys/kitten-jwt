@@ -164,11 +164,11 @@ function verifyHTTPHeaderFn (serverId, getPublicKeyFn) {
     if (!req.headers) {
       return next(new Error('No header detected'));
     }
-    var _auth = req.headers.Authorization;
+    var _auth = req.headers['Authorization'] || req.headers['authorization'];
     if (typeof _auth !== 'string') {
       return next(new Error('No Authorization HTTP header detected. Format is "Authorization: Bearer token"'));
     }
-    if (/^Bearer /.test(_auth) === false) {
+    if (/^Bearer /i.test(_auth) === false) {
       return next(new Error('No Bearer Token detected. Format is "Authorization: Bearer token"'));
     }
     var _token = _auth.slice(7);

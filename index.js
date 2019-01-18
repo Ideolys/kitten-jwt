@@ -156,7 +156,7 @@ function verify (jwt, publicKey, callback) {
 
 function generateAuto (clientId, serverId, privKey, data) {
   // var _cacheKey = clientId + '_' + serverId;
-  var _token = generate(clientId, serverId, DEFAULT_EXPIRE_IN, privKey, data);
+  return generate(clientId, serverId, DEFAULT_EXPIRE_IN, privKey, data);
 }
 
 function verifyHTTPHeaderFn (serverId, getPublicKeyFn) {

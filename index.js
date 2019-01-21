@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const path = require('path');
 const exec = require('child_process').exec;
 
-const DEFAULT_EXPIRE_IN = 60 * 60 * 12;
+const DEFAULT_EXPIRE_IN = 60 * 60 * 24 * 30;
 
 function base64urlDecode (str) {
   var _str = str.replace(/\-/g, '+').replace(/_/g, '/');

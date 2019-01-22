@@ -161,6 +161,7 @@ These APIs should not be used direclty in a web app because nothing is cached.
 TODO :
 
 - use LRU cache
+- blacklist IP which send too many bad token
 - to save extra bandwithh:  kitten-jwt accepts and generate tokens with one-letter header instead of RFCs JWT header (optional)
 - make expiration a little bit random
 - should i use https://en.wikipedia.org/wiki/Curve25519 ?

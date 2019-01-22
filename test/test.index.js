@@ -1,18 +1,104 @@
-var should  = require('should');
-var crypto  = require('crypto');
-var jwt     = require('../index.js');
+const should    = require('should');
+const crypto    = require('crypto');
+const jwtVendor = require('jsonwebtoken');
+const jwt       = require('../index.js');
+const tk        = require('timekeeper');
 
 describe('jsonWebToken', function () {
+  afterEach(function () {
+    tk.reset();
+    jwt.resetCache();
+  });
   describe('generate()', function () {
     it('should generate a token', function (done) {
       let _clientId = '123';
       let _serverId = 'service1';
       let _expireIn = 30;
-      let _token = jwt.generate(_clientId, _serverId, _expireIn, getPrivKey()); 
+      let _token = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv()); 
       let _payload = getPayload(_token);
       should(_payload.iss).equal(_clientId);
       should(_payload.aud).equal(_serverId);
       should(_payload.exp).be.approximately((Date.now()/1000)+_expireIn, 10);
+      done();
+    });
+    it('should generate a token compatible with jsonwebtoken module', function (done) {
+      let _clientId = '123';
+      let _serverId = 'service1';
+      let _expireIn = 30;
+      let _token = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv()); 
+      let _payload = getPayload(_token);
+      jwtVendor.verify(_token, getECDHPublic(), { audience : _serverId, issuer : _clientId }, function (err, decoded) {
+        should(err).be.null();
+        should(decoded.iss).equal(_clientId);
+        should(decoded.aud).equal(_serverId);
+        should(decoded.exp).be.approximately((Date.now()/1000)+_expireIn, 10);
+        done();
+      });
+    });
+    it('should be fast enough', function (done) {
+      let _nbIteration = 1000;
+      let _iteration = 0;
+      let _tokens = [];
+      let _clientId = '123';
+      let _serverId = 'service1';
+      let _expireIn = 30;
+      let _start = process.hrtime();
+      while (_iteration < _nbIteration) {
+        _iteration++;
+        _tokens.push(jwt.generate(_clientId, _serverId, _expireIn+_iteration, getECDHPriv())); 
+      }
+      let _elapsed = getDurationInUS(_start);
+      let _tokenPerSecond = parseInt( _iteration / (_elapsed / 1e6) , 10);
+      should(_tokenPerSecond).be.above(600);
+      console.log('\n\n' + _tokenPerSecond + ' token generated per seconds\n');
+      done();
+    });
+  });
+  describe('generateAuto()', function () {
+    it('should generate a token and renew it automatically after 12-hour', function (done) {
+      let _clientId = '123';
+      let _serverId = 'service1';
+      let _expireIn = 60 * 60 * 12;
+      let _token = jwt.generateAuto(_clientId, _serverId, getECDHPriv());
+      let _payload = getPayload(_token);
+      should(_payload.iss).equal(_clientId);
+      should(_payload.aud).equal(_serverId);
+      should(_payload.exp).be.approximately((Date.now()/1000)+_expireIn, 10);
+      // travel in time start + 5 hours
+      tk.travel(new Date(Date.now() + 60 * 60 * 5 * 1000));
+      let _newToken = jwt.generateAuto(_clientId, _serverId, getECDHPriv());
+      should(_token).equal(_newToken);
+      // travel in time start + 7 hours
+      tk.travel(new Date(Date.now() + 60 * 60 * 2 * 1000));
+      _newToken = jwt.generateAuto(_clientId, _serverId, getECDHPriv());
+      should(_token).equal(_newToken);
+      // travel in time start + 13 hours
+      tk.travel(new Date(Date.now() + 60 * 60 * 6 * 1000));
+      let _newToken2 = jwt.generateAuto(_clientId, _serverId, getECDHPriv());
+      _payload = getPayload(_newToken2);
+      should(_payload.exp).be.approximately((Date.now()/1000)+_expireIn , 100);
+      should(_token).not.equal(_newToken2);
+      // travel in time now + 2 hours
+      tk.travel(new Date(Date.now() + 60 * 60 * 2 * 1000));
+      let _newToken3 = jwt.generateAuto(_clientId, _serverId, getECDHPriv());
+      should(_newToken2).equal(_newToken3);
+      done();
+    });
+    it('should be extremly fast', function (done) {
+      let _nbIteration = 2000;
+      let _iteration = 0;
+      let _tokens = [];
+      let _clientId = '123';
+      let _serverId = 'service1';
+      let _start = process.hrtime();
+      while (_iteration < _nbIteration) {
+        _iteration++;
+        _tokens.push(jwt.generateAuto(_clientId, _serverId, getECDHPriv())); 
+      }
+      let _elapsed = getDurationInUS(_start);
+      let _tokenPerSecond = parseInt( _iteration / (_elapsed / 1e6) , 10);
+      should(_tokenPerSecond).be.above(500000);
+      console.log('\n\n' + _tokenPerSecond + ' tokens per seconds with generateAuto\n');
       done();
     });
   });
@@ -21,8 +107,8 @@ describe('jsonWebToken', function () {
       let _clientId = '123';
       let _serverId = 'service1';
       let _expireIn = 30;
-      let _token = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv2());
-      jwt.verify(_token, getECDHPublic2(), (err, payload) => {
+      let _token = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv());
+      jwt.verify(_token, getECDHPublic(), (err, payload) => {
         should(err).be.null();
         should(payload.iss).equal(_clientId);
         should(payload.aud).equal(_serverId);
@@ -35,13 +121,14 @@ describe('jsonWebToken', function () {
       let _clientIdOther = '124';
       let _serverId = 'service1';
       let _expireIn = 30;
-      let _token = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv2());
-      let _tokenOther = jwt.generate(_clientIdOther, _serverId, _expireIn, getECDHPriv2());
-      let _payloadOther = _tokenOther.split('.')[0];
-      let _tokenBad = _payloadOther + '.' + _token.split('.')[1];
+      let _token = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv());
+      let _tokenOther = jwt.generate(_clientIdOther, _serverId, _expireIn, getECDHPriv());
+      let _tokenSegments = _token.split('.');
+      let _otherSegments = _tokenOther.split('.');
+      let _tokenBad = _tokenSegments[0] + '.' + _otherSegments[1] + '.' + _tokenSegments[2];
       // check the token is bad
       should(getPayload(_tokenBad).iss).equal(_clientIdOther);
-      jwt.verify(_tokenBad, getECDHPublic2(), (err, payload) => {
+      jwt.verify(_tokenBad, getECDHPublic(), (err, payload) => {
         should(err+'').equal('Error: Invalid token signature');
         done();
       });
@@ -51,13 +138,14 @@ describe('jsonWebToken', function () {
       let _serverId = 'service1';
       let _serverIdOther = 'service2';
       let _expireIn = 30;
-      let _token = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv2());
-      let _tokenOther = jwt.generate(_clientId, _serverIdOther, _expireIn, getECDHPriv2());
-      let _payloadOther = _tokenOther.split('.')[0];
-      let _tokenBad = _payloadOther + '.' + _token.split('.')[1];
+      let _token = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv());
+      let _tokenOther = jwt.generate(_clientId, _serverIdOther, _expireIn, getECDHPriv());
+      let _tokenSegments = _token.split('.');
+      let _otherSegments = _tokenOther.split('.');
+      let _tokenBad = _tokenSegments[0] + '.' + _otherSegments[1] + '.' + _tokenSegments[2];
       // check the token is bad
       should(getPayload(_tokenBad).aud).equal(_serverIdOther);
-      jwt.verify(_tokenBad, getECDHPublic2(), (err, payload) => {
+      jwt.verify(_tokenBad, getECDHPublic(), (err, payload) => {
         should(err+'').equal('Error: Invalid token signature');
         done();
       });
@@ -66,18 +154,65 @@ describe('jsonWebToken', function () {
       let _clientId = '123';
       let _serverId = 'service1';
       let _expireIn = 1;
-      let _token = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv2());
-      jwt.verify(_token, getECDHPublic2(), (err, payload) => {
+      let _token = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv());
+      jwt.verify(_token, getECDHPublic(), (err, payload) => {
         should(err).be.null();
         should(payload.iss).equal(_clientId);
         should(payload.aud).equal(_serverId);
         should(payload.exp).be.approximately((Date.now()/1000)+_expireIn, 10);
         setTimeout(() => {
-          jwt.verify(_token, getECDHPublic2(), (err, payload) => {
+          jwt.verify(_token, getECDHPublic(), (err, payload) => {
             should(err+'').equal('Error: Token expired');
             done();
           });
         }, 1200);
+      });
+    });
+    it('should return an error if the signature is not valid', function (done) {
+      let _clientId = '123';
+      let _serverId = 'service1';
+      let _serverIdOther = 'service2';
+      let _expireIn = 30;
+      let _token = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv());
+      let _tokenOther = jwt.generate(_clientId, _serverIdOther, _expireIn, getECDHPriv());
+      let _tokenSegments = _token.split('.');
+      let _otherSegments = _tokenOther.split('.');
+      let _tokenBad = _tokenSegments[0] + '.' + _tokenSegments[1] + '.' + _otherSegments[2];
+      jwt.verify(_token, getECDHPublic(), (err, payload) => {
+        should(err).be.null();
+        jwt.verify(_tokenBad, getECDHPublic(), (err, payload) => {
+          should(err+'').equal('Error: Invalid token signature');
+          done();
+        });
+      });
+    });
+    it('should return an error if the private key does not match with the public key', function (done) {
+      let _clientId = '123';
+      let _serverId = 'service1';
+      let _serverIdOther = 'service2';
+      let _expireIn = 30;
+      let _token = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv());
+      jwt.verify(_token, getECDHPublic(), (err, payload) => {
+        should(err).be.null();
+        jwt.verify(_token, getECDHPublic256(), (err, payload) => {
+          should(err+'').equal('Error: Invalid token signature');
+          done();
+        });
+      });
+    });
+    it('should accepts token generated by node-json-web-token module', function (done) {
+      let _clientId = '123';
+      let _serverId = 'service1';
+      let _serverIdOther = 'service2';
+      let _expireIn = 30;
+      let _expireAt = parseInt(Date.now()/1000) + _expireIn;
+      let _token = jwtVendor.sign({ aud : _serverId, iss : _clientId, exp : _expireAt }, getECDHPriv(), { algorithm : 'ES512'});
+      jwt.verify(_token, getECDHPublic(), (err, payload) => {
+        should(err).be.null();
+        should(payload.iss).equal(_clientId);
+        should(payload.aud).equal(_serverId);
+        should(payload.exp).be.approximately((Date.now()/1000)+_expireIn, 10);
+        done();
       });
     });
   });
@@ -86,14 +221,14 @@ describe('jsonWebToken', function () {
       let _clientId = '123';
       let _serverId = 'service1';
       let _expireIn = 10;
-      let _token        = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv2());
+      let _token    = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv());
 
       function getPublicKeyFn (req, res, payload, callback) {
         should(payload.iss).equal(_clientId);
         should(payload.aud).equal(_serverId);
         // make it asynchrone
         return setTimeout(() => {
-          callback(getECDHPublic2());
+          callback(getECDHPublic());
         }, 0);
       }
       let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
@@ -111,18 +246,64 @@ describe('jsonWebToken', function () {
       }
       _middlewareFn(_req, {}, next);
     });
+    it('should be extremely fast, even if there is a bad token client', function (done) {
+      let _nbIteration = 1000;
+      let _iteration = 0;
+      let _nbNextCalled = 0;
+      let _clientId = '1';
+      let _serverId = 'service1';
+      let _expireIn = 10;
+      let _token1    = jwt.generate('0', _serverId, _expireIn, getECDHPriv());
+      let _token2    = jwt.generate('1', _serverId, _expireIn, getECDHPriv());
+      let _badToken3 = jwt.generate('2', _serverId, -10, getECDHPriv());
+      let _tokens          = [_token1, _token2, _badToken3];
+      let _nbTokenToVerify = [0, 0, 0];
+      let _nbTokenVerified = [0, 0, 0];
+      function getPublicKeyFn (req, res, payload, callback) {
+        return setTimeout(() => {
+          callback(getECDHPublic());
+        }, 0);
+      }
+      let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
+      let _req = { headers : { authorization : '' } };
+      function next (err) {
+        _nbNextCalled++;
+        let _tokenReceived = err ? 2 : parseInt(_req.jwtPayload.iss);
+        _nbTokenVerified[_tokenReceived]++;
+        if (_nbNextCalled === _nbIteration) {
+          theEnd();
+        }
+      }
+      let _start = process.hrtime();
+      while (_iteration < _nbIteration) {
+        _iteration++;
+        let _selectedToken = parseInt(Math.random()*3);
+        _nbTokenToVerify[_selectedToken]++;
+        _req.headers.authorization = 'Bearer ' + _tokens[_selectedToken];
+        _middlewareFn(_req, {}, next);
+      }
+      function theEnd () {
+        let _elapsed = getDurationInUS(_start);
+        let _tokenPerSecond = parseInt( _iteration / (_elapsed / 1e6) , 10);
+        should(_nbTokenToVerify).eql(_nbTokenVerified);
+        should(_tokenPerSecond).be.above(500);
+        console.log('\n\n' + _tokenPerSecond + ' token verified by verifyHTTPHeaderFn middleware per seconds\n');
+        done();
+      }
+    });
+    // The RFC for HTTP (as cited above) dictates that the headers are case-insensitive
     it('should accepts headers with lower case', function (done) {
       let _clientId = '123';
       let _serverId = 'service1';
       let _expireIn = 10;
-      let _token        = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv2());
+      let _token    = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv());
 
       function getPublicKeyFn (req, res, payload, callback) {
         should(payload.iss).equal(_clientId);
         should(payload.aud).equal(_serverId);
         // make it asynchrone
         return setTimeout(() => {
-          callback(getECDHPublic2());
+          callback(getECDHPublic());
         }, 0);
       }
       let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
@@ -144,14 +325,14 @@ describe('jsonWebToken', function () {
       let _clientId = '123';
       let _serverId = 'service1';
       let _expireIn = 10;
-      let _token    = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv2());
+      let _token    = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv());
 
       function getPublicKeyFn (req, res, payload, callback) {
         should(payload.iss).equal(_clientId);
         should(payload.aud).equal(_serverId);
         // make it asynchrone
         return setTimeout(() => {
-          callback(getECDHPublic2());
+          callback(getECDHPublic());
         }, 0);
       }
       let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
@@ -168,14 +349,14 @@ describe('jsonWebToken', function () {
       let _clientId = '123';
       let _serverId = 'service1';
       let _expireIn = 1;
-      let _token    = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv2());
+      let _token    = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv());
 
       function getPublicKeyFn (req, res, payload, callback) {
         should(payload.iss).equal(_clientId);
         should(payload.aud).equal(_serverId);
         // make it asynchrone
         return setTimeout(() => {
-          callback(getECDHPublic2());
+          callback(getECDHPublic());
         }, 0);
       }
       let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
@@ -196,14 +377,14 @@ describe('jsonWebToken', function () {
       let _clientId = '123';
       let _serverId = 'service1';
       let _expireIn = 10;
-      let _token    = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv2());
+      let _token    = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv());
 
       function getPublicKeyFn (req, res, payload, callback) {
         should(payload.iss).equal(_clientId);
         should(payload.aud).equal(_serverId);
         // make it asynchrone
         return setTimeout(() => {
-          callback(getECDHPublic2());
+          callback(getECDHPublic());
         }, 0);
       }
       let _middlewareFn = jwt.verifyHTTPHeaderFn('otherServer', getPublicKeyFn);
@@ -222,17 +403,15 @@ describe('jsonWebToken', function () {
 });
 
 
-
-function getECDHPublic () {
-  // prime256v1
+// prime256v1
+function getECDHPublic256 () {
   return '-----BEGIN PUBLIC KEY-----\n'
         +'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEVzKI2nSLwOfDjaWsdfkGUuGFEeSh\n'
         +'Y9RtMeCj7PBF2p3vFE1QrEBCNkKqTyK0fhpHiVhiuOWwzNpKQGx1/X2rSg==\n'
         +'-----END PUBLIC KEY-----\n'
   ;
 }
-
-function getECDHPriv () { 
+function getECDHPriv256 () { 
   return '-----BEGIN EC PRIVATE KEY-----\n'
        + 'MHcCAQEEIDCxGMFiS4IcWTYoc2esZqMpk7GgDc+sWpzX1bTrEpQ9oAoGCCqGSM49\n'
        + 'AwEHoUQDQgAEVzKI2nSLwOfDjaWsdfkGUuGFEeShY9RtMeCj7PBF2p3vFE1QrEBC\n'
@@ -240,9 +419,8 @@ function getECDHPriv () { 
        + '-----END EC PRIVATE KEY-----\n';
 }
 
-
-function getECDHPublic2 () {
-  // secp521r1
+// secp521r1
+function getECDHPublic () {
   return `-----BEGIN PUBLIC KEY-----
 MIGbMBAGByqGSM49AgEGBSuBBAAjA4GGAAQAFyuBMMabuKuiRcSkgCPdThV4fZK3
 CEFcK07JndIa+Gals5/JC5kQAlcnPtu3dpMbqwFcw8k7Axdd/yldr+mnOo8Bb+Xx
@@ -250,10 +428,8 @@ ENwtgO5nQO4w1IVvXBFHQP5s/HtI+VPquJBeI75PqbAWQaUXTdkyF4nEpTUsnT7h
 mV+8hper5VKVe1cTfsg=
 -----END PUBLIC KEY-----
 `;
-
 }
-
-function getECDHPriv2 () { 
+function getECDHPriv () { 
   return `-----BEGIN EC PRIVATE KEY-----
 MIHcAgEBBEIBPVWtkiEJWdPW1t8+CYAMKBr1VdAO4sU15AZNJopFcRdeCZSEOOF2
 eUhAFocH57oBaoi9NQP5BFbsYjVjo7biZbmgBwYFK4EEACOhgYkDgYYABAAXK4Ew
@@ -264,71 +440,24 @@ sBZBpRdN2TIXicSlNSydPuGZX7yGl6vlUpV7VxN+yA==
 `;     
 }
 
-function getPrivKey () {
-  return `-----BEGIN RSA PRIVATE KEY-----
-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
------END RSA PRIVATE KEY-----`;
-}
-
-function getPubKey () {
-  return `-----BEGIN PUBLIC KEY-----
-MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAtUvmYO9rk8tZQVhg0isK
-psGkp5kFUFrqf094irfwtP/DQwYVJxCmkGhVfp+u/QjPx3eImB5vXm6s9Zl8TnqL
-6Fsjq3a0wNnnRDHIu0oHdWKNknjIkzfwOptLqYKArvOnjjlI0xFPz9AE9/qb6G37
-BFOK9G2NkarpEXepnP1nXruGaX9B/jz7HSeeokiX8r8X+h2rzrko7aie/DAQUWuo
-9mV5q20GD7aV6CekDJg5Av842IruNOxZoAfzXtCKiduZvkmc31Zz8V3mP6Yl53Ki
-yENIo+/U8gG3AHcKK73UpXo1aV1g7KhXTGAsoSfP9EqvtXJjFoQT6tbteBqDRZgs
-aZ1HILYwdYywLIJZCVaxpc+AQqYV5QiJ8YHUI8phhY847wh7OJX6lxAIVmgXMG7u
-+ZpucNLLwjVyd9y0aRHvOeYWB0W/SROv6SdtU4fMnRqNarC35TLqS1nF8qo2D1zu
-ZqnKNolv1XpIVf5korFINrmM4E/8d+MeVZhEbACwb28RAgMBAAE=
------END PUBLIC KEY-----;
-`;
-}
-
 function getPayload (token, encoded) {
   var _segments = token.split('.');
-  var _payloadSeg = _segments[0];
+  var _payloadSeg = _segments[1];
   var _payload = JSON.parse(base64urlDecode(_payloadSeg));
   if (encoded) {
     _payload = _payloadSeg;
   }
   return _payload;
+}
+
+function getHeader (token, encoded) {
+  var _segments = token.split('.');
+  var _headerSeg = _segments[0];
+  var _header = JSON.parse(base64urlDecode(_headerSeg));
+  if (encoded) {
+    _header = _headerSeg;
+  }
+  return _header;
 }
 
 function getSignature (token) {
@@ -346,8 +475,8 @@ function base64urlUnescape (str) {
   return str.replace(/\-/g, '+').replace(/_/g, '/');
 }
 
-
 function getDurationInUS (time) {
   var _interval = process.hrtime(time);
   return _interval[0] * 1e6 + parseInt(_interval[1] / 1e3, 10);
 }
+

@@ -275,6 +275,7 @@ module.exports = {
   generateAuto       : getToken, // deprecated
   getToken           : getToken,
   getToken           : getToken,
-  resetCache         : resetCache
+  resetCache         : resetCache,
+  generateECDHKeys   : generateECDHKeys
 };
 

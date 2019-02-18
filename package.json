@@ -1,6 +1,6 @@
 {
   "name": "kitten-jwt",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "description": "Keep It Simple, Stupid, Secure and Fast JWT module",
   "main": "index.js",
   "scripts": {
@@ -20,7 +20,12 @@
   },
   "homepage": "https://github.com/Ideolys/kitten-jwt#readme",
   "devDependencies": {
+    "jsonwebtoken": "8.4.0",
     "mocha": "5.2.0",
-    "should": "8.2.1"
+    "should": "8.2.1",
+    "timekeeper": "2.1.2"
+  },
+  "dependencies": {
+    "jwa": "1.1.6"
   }
 }

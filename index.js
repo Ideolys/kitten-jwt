@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const path   = require('path');
 const exec   = require('child_process').exec;
 const jwa    = require('jwa');
+const Qlru   = require('quick-lru');
 
 // default expiration of token in seconds
 const DEFAULT_EXPIRE_IN = 60 * 60 * 12;
@@ -10,10 +11,14 @@ const ALGORITHM_NAME = 'ES'+ALGORITHM_BITS;
 const ALGORITHM_SIGN = 'secp521r1'; // 'prime256v1';
 const ecdsa          = jwa(ALGORITHM_NAME);
 
-const clientCacheKey        = new Map();
 const CLIENT_CACHE_SIZE_MAX = 50;
+const clientCache           = new Qlru({maxSize : CLIENT_CACHE_SIZE_MAX});
 // how many time before expiration do we renew the token in millisecond
 const CLIENT_RENEW_LIMIT    = 60 * 20 * 1000; 
+
+
+const SERVER_CACHE_SIZE_MAX = 1000;
+const serverCache = new Qlru({maxSize : SERVER_CACHE_SIZE_MAX});
 
 /**
  * Decode base64 url if there is in the token
@@ -66,7 +71,7 @@ function generateECDHKeys (outputDir, outputKeyName, callback) {
  * 
  * @param  {Mixed}   clientId
  * @param  {Mixed}   serverId
- * @param  {Integer} expiresIn
+ * @param  {Integer} expiresIn in seconds
  * @param  {String}  privKey
  * @param  {Mixed}   data
  * @return {String}  return the token
@@ -198,19 +203,14 @@ function verify (jwt, publicKey, callback) {
 function getToken (clientId, serverId, privKey) {
   let _cacheKey = clientId + '_' + serverId;
 
-  let _cachedToken = clientCacheKey.get(_cacheKey);
+  let _cachedToken = clientCache.get(_cacheKey);
   let _now = Date.now();
   if ( _cachedToken !== undefined && _now < (_cachedToken.expireAt - CLIENT_RENEW_LIMIT) && _cachedToken.privKey === privKey ) {
     return _cachedToken.token;
   }
   let _newToken = generate(clientId, serverId, DEFAULT_EXPIRE_IN, privKey);
 
-  // protection against infinite growth (TODO, become LRU)
-  if (clientCacheKey.length > CLIENT_CACHE_SIZE_MAX) {
-    clientCacheKey.clear();
-  }
-
-  clientCacheKey.set(_cacheKey, {
+  clientCache.set(_cacheKey, {
     token    : _newToken,
     privKey  : privKey,
     expireAt : _now + (DEFAULT_EXPIRE_IN * 1000)
@@ -240,6 +240,20 @@ function verifyHTTPHeaderFn (serverId, getPublicKeyFn) {
     }
     let _token = _auth.slice(7);
 
+    // is it in cache, fast return of errors or not
+    let _cachedToken = serverCache.get(_token);
+    if (_cachedToken) {
+      if (Date.now() > parseInt(_cachedToken.payload.exp, 10) * 1000) {
+        _cachedToken.err = new Error('Token expired');
+      }
+      if (_cachedToken.err) {
+        return next(_cachedToken.err);
+      }
+      req.jwtPayload = _cachedToken.payload;
+      return next();
+    }
+
+    // otherwise, compute everything
     parseToken(_token, (err, payload, tokenString, signature) => {
       if (err) {
         return next(err);
@@ -249,6 +263,7 @@ function verifyHTTPHeaderFn (serverId, getPublicKeyFn) {
       }
       getPublicKeyFn(req, res, payload, function (publicKey) {
         verifyToken(payload, tokenString, signature, publicKey, (err) => {
+          serverCache.set(_token, { payload : payload, err : err });
           if (err) {
             return next(err);
           }
@@ -265,17 +280,17 @@ function verifyHTTPHeaderFn (serverId, getPublicKeyFn) {
  * 
  */
 function resetCache () {
-  clientCacheKey.clear();
+  clientCache.clear();
+  serverCache.clear();
 }
 
 module.exports = {
-  verify             : verify,
-  verifyHTTPHeaderFn : verifyHTTPHeaderFn,
-  generate           : generate,
-  generateAuto       : getToken, // deprecated
-  getToken           : getToken,
-  getToken           : getToken,
-  resetCache         : resetCache,
-  generateECDHKeys   : generateECDHKeys
+  verify,
+  verifyHTTPHeaderFn,
+  generate,
+  getToken,
+  resetCache,
+  generateECDHKeys,
+  generateAuto : getToken // deprecated
 };
 

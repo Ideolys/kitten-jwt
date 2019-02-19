@@ -27,7 +27,7 @@ Main purpose : be plug'n'play for developers who do not have a lot of time.
 
 - Follows JWT RFC
 - Ultra-fast JWT generator with automatic renewal every 12-hours for client side
-- Ultra-fast JWT verification using LRU-cache for server side (TODO)
+- Ultra-fast JWT verification using LRU-cache for server side
 - Fastify, Restify or Express authentication middleware
 - Highly secured by default with assymetric ECDSA keys (ES512)
 - ECDSA Public / Private key generator
@@ -47,9 +47,9 @@ Main purpose : be plug'n'play for developers who do not have a lot of time.
 
   // Generate an ephemeral jwt token (short expiration date), auto-renewed every 12-hour by default
   // This function is very fast (uses cache), it can be called for every HTTP request
-  var header = jwt.generateAuto('client-id-1220202', 'server-app-name', 'privKeyOfTheClient');
+  var header = jwt.getToken('client-id-1220202', 'server-app-name', 'privKeyOfTheClient');
 
-  // Put the token in HTTP Header, it will be parsed by jwt.verifyHTTPHeaderFn automatically
+  // Insert the token in HTTP Header, it will be parsed by jwt.verifyHTTPHeaderFn automatically
   request.setHeader('Authorization', 'Bearer ' + header);
 
 ```
@@ -70,10 +70,8 @@ Main purpose : be plug'n'play for developers who do not have a lot of time.
   // This function is very fast (uses lru-cache)
   express().use(jwt.verifyHTTPHeaderFn('server-app-name', getPublicKeyFn));
 
-  // if the public key changes (TODO)
-  jwt.resetCache(clientId, (err) => {
-    // cache invalidated
-  });
+  // if the public key changes
+  jwt.resetCache();
 
   // In other middleware, you can print JWT payload object, added by verifyHTTPHeaderFn
   console.log(req.jwtPayload);
@@ -111,10 +109,10 @@ can be used for another web-service which have the same clientId and public key.
 
 These functions uses cache to be as fast as possible
 
-* `jwt.generateAuto (clientId, serverId, privKey)`
+* `jwt.getToken (clientId, serverId, privKey)`
 
-  Generate a token for the tuple clientId-serverId, which expires in about 12 hours (+- random)
-  Re-use this same token during about 12 hours if called more than twice
+  Generate a token for the tuple clientId-serverId, which expires in about 12 hours (+- random)<br>
+  Re-use this same token during about 12 hours if called more than twice<br>
   Generate a new token automatically before expiration (20-minute before) or if privKey change
 
   - clientId  : JWT issuer, token.iss
@@ -123,7 +121,7 @@ These functions uses cache to be as fast as possible
 
 * `jwt.verifyHTTPHeaderFn (serverId, getPublicKeyFn)`
 
-  Generate a function(req, req, next)
+  Generate a function(req, req, next)<br>
   Set req.jwtPayload
 
   - getPublicKeyFn    : Function(req, res, payload, callback) which returns publicKey in callback(pubKey)
@@ -135,7 +133,7 @@ These functions uses cache to be as fast as possible
 
 ### Low-level API
 
-These APIs should not be used direclty in a web app because nothing is cached.
+These APIs should **not be used direclty in a web app because nothing is cached (slow)**.
 
 * `jwt.generate (clientId, serverId, expiresIn, privKey, data)` : generate a token
 
@@ -160,7 +158,6 @@ These APIs should not be used direclty in a web app because nothing is cached.
 
 TODO :
 
-- use LRU cache
 - blacklist IP which send too many bad token
 - to save extra bandwithh:  kitten-jwt accepts and generate tokens with one-letter header instead of RFCs JWT header (optional)
 - make expiration a little bit random

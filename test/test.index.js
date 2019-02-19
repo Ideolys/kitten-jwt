@@ -247,7 +247,7 @@ describe('jsonWebToken', function () {
       _middlewareFn(_req, {}, next);
     });
     it('should be extremely fast, even if there is a bad token client', function (done) {
-      let _nbIteration = 1000;
+      let _nbIteration = 2000;
       let _iteration = 0;
       let _nbNextCalled = 0;
       let _clientId = '1';
@@ -256,40 +256,56 @@ describe('jsonWebToken', function () {
       let _token1    = jwt.generate('0', _serverId, _expireIn, getECDHPriv());
       let _token2    = jwt.generate('1', _serverId, _expireIn, getECDHPriv());
       let _badToken3 = jwt.generate('2', _serverId, -10, getECDHPriv());
-      let _tokens          = [_token1, _token2, _badToken3];
+      let _tokens          = ['Bearer ' + _token1, 'Bearer ' + _token2, 'Bearer ' + _badToken3];
       let _nbTokenToVerify = [0, 0, 0];
-      let _nbTokenVerified = [0, 0, 0];
+      let _nbTokenVerifiedOk = 0;
+      let _nbTokenVerifiedKo = 0;
       function getPublicKeyFn (req, res, payload, callback) {
         return setTimeout(() => {
           callback(getECDHPublic());
-        }, 0);
+        }, 100);
       }
       let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
       let _req = { headers : { authorization : '' } };
-      function next (err) {
-        _nbNextCalled++;
-        let _tokenReceived = err ? 2 : parseInt(_req.jwtPayload.iss);
-        _nbTokenVerified[_tokenReceived]++;
-        if (_nbNextCalled === _nbIteration) {
-          theEnd();
-        }
-      }
-      let _start = process.hrtime();
-      while (_iteration < _nbIteration) {
-        _iteration++;
-        let _selectedToken = parseInt(Math.random()*3);
-        _nbTokenToVerify[_selectedToken]++;
-        _req.headers.authorization = 'Bearer ' + _tokens[_selectedToken];
-        _middlewareFn(_req, {}, next);
-      }
-      function theEnd () {
-        let _elapsed = getDurationInUS(_start);
-        let _tokenPerSecond = parseInt( _iteration / (_elapsed / 1e6) , 10);
-        should(_nbTokenToVerify).eql(_nbTokenVerified);
-        should(_tokenPerSecond).be.above(500);
-        console.log('\n\n' + _tokenPerSecond + ' token verified by verifyHTTPHeaderFn middleware per seconds\n');
-        done();
-      }
+      // pre-warm cache
+      _req.headers.authorization = _tokens[0];
+      _middlewareFn(_req, {}, function () {
+        _req.headers.authorization = _tokens[1];
+        _middlewareFn(_req, {}, function () {
+          _req.headers.authorization = _tokens[2];
+          _middlewareFn(_req, {}, function () {
+            let _start = process.hrtime();
+            while (_iteration < _nbIteration) {
+              _iteration++;
+              let _selectedToken = parseInt(Math.random()*3);
+              _nbTokenToVerify[_selectedToken]++;
+              let _req = { headers : { authorization : _tokens[_selectedToken] } };
+              _middlewareFn(_req, {}, nextIteration);
+            }
+            function nextIteration (err) {
+              _nbNextCalled++;
+              if (err) {
+                _nbTokenVerifiedKo++;
+              }
+              else {
+                _nbTokenVerifiedOk++;
+              }
+              if (_nbNextCalled === _nbIteration) {
+                theEnd();
+              }
+            }
+            function theEnd () {
+              let _elapsed = getDurationInUS(_start);
+              let _tokenPerSecond = parseInt( _iteration / (_elapsed / 1e6) , 10);
+              should(_nbTokenToVerify[0] + _nbTokenToVerify[1]).eql(_nbTokenVerifiedOk);
+              should(_nbTokenToVerify[2]).eql(_nbTokenVerifiedKo);
+              should(_tokenPerSecond).be.above(100000);
+              console.log('\n\n' + _tokenPerSecond + ' tokens per seconds verified by verifyHTTPHeaderFn middleware\n');
+              done();
+            }
+          });
+        });
+      });
     });
     // The RFC for HTTP (as cited above) dictates that the headers are case-insensitive
     it('should accepts headers with lower case', function (done) {

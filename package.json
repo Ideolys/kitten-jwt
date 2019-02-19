@@ -26,6 +26,7 @@
     "timekeeper": "2.1.2"
   },
   "dependencies": {
-    "jwa": "1.1.6"
+    "jwa": "1.1.6",
+    "quick-lru": "2.0.0"
   }
 }

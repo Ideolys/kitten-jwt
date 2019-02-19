@@ -243,7 +243,7 @@ function verifyHTTPHeaderFn (serverId, getPublicKeyFn) {
     // is it in cache, fast return of errors or not
     let _cachedToken = serverCache.get(_token);
     if (_cachedToken) {
-      if (Date.now() > parseInt(_cachedToken.payload.exp, 10) * 1000) {
+      if (_cachedToken.payload !== undefined && _cachedToken.payload.exp !== undefined && Date.now() > parseInt(_cachedToken.payload.exp, 10) * 1000) {
         _cachedToken.err = new Error('Token expired');
       }
       if (_cachedToken.err) {
@@ -256,10 +256,13 @@ function verifyHTTPHeaderFn (serverId, getPublicKeyFn) {
     // otherwise, compute everything
     parseToken(_token, (err, payload, tokenString, signature) => {
       if (err) {
+        serverCache.set(_token, { payload : payload, err : err });
         return next(err);
       }
       if (payload && payload.aud !== serverId) {
-        return next(new Error('Invalid token audience'));
+        let _err = new Error('Invalid token audience');
+        serverCache.set(_token, { payload : payload, err : _err });
+        return next(_err);
       }
       getPublicKeyFn(req, res, payload, function (publicKey) {
         verifyToken(payload, tokenString, signature, publicKey, (err) => {

@@ -299,7 +299,7 @@ describe('jsonWebToken', function () {
               let _tokenPerSecond = parseInt( _iteration / (_elapsed / 1e6) , 10);
               should(_nbTokenToVerify[0] + _nbTokenToVerify[1]).eql(_nbTokenVerifiedOk);
               should(_nbTokenToVerify[2]).eql(_nbTokenVerifiedKo);
-              should(_tokenPerSecond).be.above(100000);
+              should(_tokenPerSecond).be.above(400000);
               console.log('\n\n' + _tokenPerSecond + ' tokens per seconds verified by verifyHTTPHeaderFn middleware\n');
               done();
             }
@@ -308,7 +308,7 @@ describe('jsonWebToken', function () {
       });
     });
     // The RFC for HTTP (as cited above) dictates that the headers are case-insensitive
-    it('should accepts headers with lower case', function (done) {
+    it('should accepts headers with lower case. req.jwtPayload should still be defined if cache is used', function (done) {
       let _clientId = '123';
       let _serverId = 'service1';
       let _expireIn = 10;
@@ -333,7 +333,13 @@ describe('jsonWebToken', function () {
         should(_req.jwtPayload.iss).equal(_clientId);
         should(_req.jwtPayload.aud).equal(_serverId);
         should(_req.jwtPayload.exp).be.approximately((Date.now()/1000)+_expireIn, 10);
-        done();
+        delete _req.jwtPayload;
+        _middlewareFn(_req, {}, () => {
+          // _req.jwtPayload should be defined even if cache is used (second call)
+          should(_req.jwtPayload.iss).equal(_clientId);
+          should(_req.jwtPayload.aud).equal(_serverId);
+          done();
+        });
       }
       _middlewareFn(_req, {}, next);
     });
@@ -361,7 +367,50 @@ describe('jsonWebToken', function () {
       }
       _middlewareFn(_req, {}, next);
     });
-    it('should return an error if the token is expired', function (done) {
+    it('should return an error if the token is expired. And it should be faster the second time (cache)', function (done) {
+      let _clientId = '123';
+      let _serverId = 'service1';
+      let _expireIn = 1;
+      let _token    = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv());
+      let _start    = 0;
+
+      function getPublicKeyFn (req, res, payload, callback) {
+        should(payload.iss).equal(_clientId);
+        should(payload.aud).equal(_serverId);
+        // make it asynchrone
+        return setTimeout(() => {
+          callback(getECDHPublic());
+        }, 0);
+      }
+      let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
+      let _req = {
+        headers : {
+          Authorization : 'Bearer ' + _token
+        }
+      };
+      function next (err) {
+        should(err+'').be.equal('Error: Token expired');
+        _start = process.hrtime();
+        // should return the same error both (cache is used if asked two times)
+        _middlewareFn(_req, {}, (err) => {
+          _middlewareFn(_req, {}, (err) => {
+            _middlewareFn(_req, {}, (err) => {
+              nextAndEnd(err);
+            });
+          });
+        });
+      }
+      function nextAndEnd (err) {
+        should(err+'').be.equal('Error: Token expired');
+        let _elapsed = getDurationInUS(_start);
+        should(_elapsed).be.below(150);
+        done();
+      }
+      setTimeout(() => {
+        _middlewareFn(_req, {}, next);
+      }, 1200);
+    });
+    it('should return an error if the token is expired, even is it cached (NOT THE SAME TEST AS ABOVE)', function (done) {
       let _clientId = '123';
       let _serverId = 'service1';
       let _expireIn = 1;
@@ -385,9 +434,14 @@ describe('jsonWebToken', function () {
         should(err+'').be.equal('Error: Token expired');
         done();
       }
-      setTimeout(() => {
-        _middlewareFn(_req, {}, next);
-      }, 1200);
+      // let the module put the token in the cache when it is still valid
+      _middlewareFn(_req, {}, (err) => {
+        should(err).be.undefined();
+        setTimeout(() => {
+          // and check again to verify the cache does not break expiration check
+          _middlewareFn(_req, {}, next);
+        }, 1200);
+      });
     });
     it('should return an error if the audience is not valid', function (done) {
       let _clientId = '123';

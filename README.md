@@ -26,8 +26,8 @@ Main purpose : be plug'n'play for developers who do not have a lot of time.
 ## Features
 
 - Follows JWT RFC
-- Ultra-fast JWT generator with automatic renewal every 12-hours for client side
-- Ultra-fast JWT verification using LRU-cache for server side
+- Ultra-fast JWT generator with automatic renewal every 12-hours for client side: 1 Million per second
+- Ultra-fast JWT verification using LRU-cache for server side: 0.5 Million per second
 - Fastify, Restify or Express authentication middleware
 - Highly secured by default with assymetric ECDSA keys (ES512)
 - ECDSA Public / Private key generator

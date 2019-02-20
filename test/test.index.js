@@ -129,7 +129,7 @@ describe('jsonWebToken', function () {
       // check the token is bad
       should(getPayload(_tokenBad).iss).equal(_clientIdOther);
       jwt.verify(_tokenBad, getECDHPublic(), (err, payload) => {
-        should(err+'').equal('Error: Invalid token signature');
+        should(err+'').equal('Error: Invalid JSON Web Token signature');
         done();
       });
     });
@@ -146,7 +146,7 @@ describe('jsonWebToken', function () {
       // check the token is bad
       should(getPayload(_tokenBad).aud).equal(_serverIdOther);
       jwt.verify(_tokenBad, getECDHPublic(), (err, payload) => {
-        should(err+'').equal('Error: Invalid token signature');
+        should(err+'').equal('Error: Invalid JSON Web Token signature');
         done();
       });
     });
@@ -162,7 +162,7 @@ describe('jsonWebToken', function () {
         should(payload.exp).be.approximately((Date.now()/1000)+_expireIn, 10);
         setTimeout(() => {
           jwt.verify(_token, getECDHPublic(), (err, payload) => {
-            should(err+'').equal('Error: Token expired');
+            should(err+'').equal('Error: JSON Web Token expired');
             done();
           });
         }, 1200);
@@ -181,7 +181,7 @@ describe('jsonWebToken', function () {
       jwt.verify(_token, getECDHPublic(), (err, payload) => {
         should(err).be.null();
         jwt.verify(_tokenBad, getECDHPublic(), (err, payload) => {
-          should(err+'').equal('Error: Invalid token signature');
+          should(err+'').equal('Error: Invalid JSON Web Token signature');
           done();
         });
       });
@@ -195,7 +195,7 @@ describe('jsonWebToken', function () {
       jwt.verify(_token, getECDHPublic(), (err, payload) => {
         should(err).be.null();
         jwt.verify(_token, getECDHPublic256(), (err, payload) => {
-          should(err+'').equal('Error: Invalid token signature');
+          should(err+'').equal('Error: Invalid JSON Web Token signature');
           done();
         });
       });
@@ -362,7 +362,7 @@ describe('jsonWebToken', function () {
         headers : {}
       };
       function next (err) {
-        should(err+'').be.equal('Error: No Authorization HTTP header detected. Format is "Authorization: Bearer token"');
+        should(err+'').be.equal('Error: No Authorization HTTP header detected. Format is "Authorization: Bearer jwt"');
         done();
       }
       _middlewareFn(_req, {}, next);
@@ -389,7 +389,7 @@ describe('jsonWebToken', function () {
         }
       };
       function next (err) {
-        should(err+'').be.equal('Error: Token expired');
+        should(err+'').be.equal('Error: JSON Web Token expired');
         _start = process.hrtime();
         // should return the same error both (cache is used if asked two times)
         _middlewareFn(_req, {}, (err) => {
@@ -401,7 +401,7 @@ describe('jsonWebToken', function () {
         });
       }
       function nextAndEnd (err) {
-        should(err+'').be.equal('Error: Token expired');
+        should(err+'').be.equal('Error: JSON Web Token expired');
         let _elapsed = getDurationInUS(_start);
         should(_elapsed).be.below(150);
         done();
@@ -431,7 +431,7 @@ describe('jsonWebToken', function () {
         }
       };
       function next (err) {
-        should(err+'').be.equal('Error: Token expired');
+        should(err+'').be.equal('Error: JSON Web Token expired');
         done();
       }
       // let the module put the token in the cache when it is still valid
@@ -464,7 +464,7 @@ describe('jsonWebToken', function () {
         }
       };
       function next (err) {
-        should(err+'').be.equal('Error: Invalid token audience');
+        should(err+'').be.equal('Error: Invalid JSON Web Token audience');
         done();
       }
       _middlewareFn(_req, {}, next);

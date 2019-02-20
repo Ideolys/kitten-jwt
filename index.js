@@ -113,7 +113,7 @@ function generate (clientId, serverId, expiresIn, privKey, data) {
 function parseToken (jwt, callback) {
   let _segments = jwt.split('.');
   if (_segments.length !== 3) {
-    return callback(new Error('Not enough or too many segments'));
+    return callback(new Error('Invalid JSON Web Token: Not enough or too many segments'));
   }
   let _headerBase64  = _segments[0];
   let _payloadBase64 = _segments[1];
@@ -127,28 +127,28 @@ function parseToken (jwt, callback) {
     let _payload       = JSON.parse(_payloadString);
 
     if (!(_payload instanceof Object)) {
-      return callback(new Error('Payload is not an object'));
+      return callback(new Error('Invalid Payload JSON Web token. It is not an object'));
     }
 
     if (!(_header instanceof Object)) {
-      return callback(new Error('Header is not an object'));
+      return callback(new Error('Invalid Header JSON Web Token. It is not an object'));
     }
 
     if (_header.alg !== ALGORITHM_NAME) {
-      return callback(new Error('Algorithm not accepted'));
+      return callback(new Error('Algorithm not accepted for JSON Web Token. Only ' + ALGORITHM_NAME + ' is accepted'));
     }
 
     if (_payload.exp && Date.now() > parseInt(_payload.exp, 10) * 1000) {
-      return callback(new Error('Token expired'));
+      return callback(new Error('JSON Web Token expired'));
     }
 
     if (_payload.iss === '' || _payload.iss === undefined || _payload.iss === null) {
-      return callback(new Error('Token without issuer'));
+      return callback(new Error('JSON Web Token without issuer'));
     }
     return callback(null, _payload, _tokenString, _signature);
   }
   catch (e) {
-    return callback(new Error('Invalid token ' + e.toString()));
+    return callback(new Error('Invalid JSON Web Token ' + e.toString()));
   }
 }
 
@@ -168,11 +168,11 @@ function verifyToken (payload, tokenString, signature, publicKey, callback) {
     // let _isValidSignature = _verifier.verify(publicKey, signature, 'base64');
 
     if (_isValidSignature === false) {
-      return callback(new Error('Invalid token signature'));
+      return callback(new Error('Invalid JSON Web Token signature'));
     }
 
   } catch (e) {
-    return callback(new Error('Invalid token' + e.toString()));
+    return callback(new Error('Invalid JSON Web Token' + e.toString()));
   }
   return callback(null, payload);
 }
@@ -229,14 +229,14 @@ function getToken (clientId, serverId, privKey) {
 function verifyHTTPHeaderFn (serverId, getPublicKeyFn) {
   return function (req, res, next) {
     if (!req.headers) {
-      return next(new Error('No header detected'));
+      return next(new Error('JSON Web Token - No HTTP header detected'));
     }
     let _auth = req.headers.Authorization || req.headers.authorization;
     if (typeof _auth !== 'string') {
-      return next(new Error('No Authorization HTTP header detected. Format is "Authorization: Bearer token"'));
+      return next(new Error('No Authorization HTTP header detected. Format is "Authorization: Bearer jwt"'));
     }
     if (/^Bearer /i.test(_auth) === false) {
-      return next(new Error('No Bearer Token detected. Format is "Authorization: Bearer token"'));
+      return next(new Error('No Bearer JSON Web Token detected. Format is "Authorization: Bearer jwt"'));
     }
     let _token = _auth.slice(7);
 
@@ -244,7 +244,7 @@ function verifyHTTPHeaderFn (serverId, getPublicKeyFn) {
     let _cachedToken = serverCache.get(_token);
     if (_cachedToken) {
       if (_cachedToken.payload !== undefined && _cachedToken.payload.exp !== undefined && Date.now() > parseInt(_cachedToken.payload.exp, 10) * 1000) {
-        _cachedToken.err = new Error('Token expired');
+        _cachedToken.err = new Error('JSON Web Token expired');
       }
       if (_cachedToken.err) {
         return next(_cachedToken.err);
@@ -260,7 +260,7 @@ function verifyHTTPHeaderFn (serverId, getPublicKeyFn) {
         return next(err);
       }
       if (payload && payload.aud !== serverId) {
-        let _err = new Error('Invalid token audience');
+        let _err = new Error('Invalid JSON Web Token audience');
         serverCache.set(_token, { payload : payload, err : _err });
         return next(_err);
       }

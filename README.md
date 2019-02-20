@@ -2,8 +2,6 @@
 
 Keep It Simple, Stupid, Secure and Fast JWT module
 
-Maintained by https://www.easilys.com and https://carbone.io
-
 ## Philosophy and why
 
 - Keep it Simple Stupid

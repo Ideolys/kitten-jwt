@@ -54,33 +54,33 @@ describe('jsonWebToken', function () {
       done();
     });
   });
-  describe('generateAuto()', function () {
+  describe('getToken()', function () {
     it('should generate a token and renew it automatically after 12-hour', function (done) {
       let _clientId = '123';
       let _serverId = 'service1';
       let _expireIn = 60 * 60 * 12;
-      let _token = jwt.generateAuto(_clientId, _serverId, getECDHPriv());
+      let _token = jwt.getToken(_clientId, _serverId, getECDHPriv());
       let _payload = getPayload(_token);
       should(_payload.iss).equal(_clientId);
       should(_payload.aud).equal(_serverId);
       should(_payload.exp).be.approximately((Date.now()/1000)+_expireIn, 10);
       // travel in time start + 5 hours
       tk.travel(new Date(Date.now() + 60 * 60 * 5 * 1000));
-      let _newToken = jwt.generateAuto(_clientId, _serverId, getECDHPriv());
+      let _newToken = jwt.getToken(_clientId, _serverId, getECDHPriv());
       should(_token).equal(_newToken);
       // travel in time start + 7 hours
       tk.travel(new Date(Date.now() + 60 * 60 * 2 * 1000));
-      _newToken = jwt.generateAuto(_clientId, _serverId, getECDHPriv());
+      _newToken = jwt.getToken(_clientId, _serverId, getECDHPriv());
       should(_token).equal(_newToken);
       // travel in time start + 13 hours
       tk.travel(new Date(Date.now() + 60 * 60 * 6 * 1000));
-      let _newToken2 = jwt.generateAuto(_clientId, _serverId, getECDHPriv());
+      let _newToken2 = jwt.getToken(_clientId, _serverId, getECDHPriv());
       _payload = getPayload(_newToken2);
       should(_payload.exp).be.approximately((Date.now()/1000)+_expireIn , 100);
       should(_token).not.equal(_newToken2);
       // travel in time now + 2 hours
       tk.travel(new Date(Date.now() + 60 * 60 * 2 * 1000));
-      let _newToken3 = jwt.generateAuto(_clientId, _serverId, getECDHPriv());
+      let _newToken3 = jwt.getToken(_clientId, _serverId, getECDHPriv());
       should(_newToken2).equal(_newToken3);
       done();
     });
@@ -93,12 +93,12 @@ describe('jsonWebToken', function () {
       let _start = process.hrtime();
       while (_iteration < _nbIteration) {
         _iteration++;
-        _tokens.push(jwt.generateAuto(_clientId, _serverId, getECDHPriv())); 
+        _tokens.push(jwt.getToken(_clientId, _serverId, getECDHPriv())); 
       }
       let _elapsed = getDurationInUS(_start);
       let _tokenPerSecond = parseInt( _iteration / (_elapsed / 1e6) , 10);
       should(_tokenPerSecond).be.above(500000);
-      console.log('\n\n' + _tokenPerSecond + ' tokens per seconds with generateAuto\n');
+      console.log('\n\n' + _tokenPerSecond + ' tokens per seconds with getToken\n');
       done();
     });
   });
@@ -403,7 +403,7 @@ describe('jsonWebToken', function () {
       function nextAndEnd (err) {
         should(err+'').be.equal('Error: JSON Web Token expired');
         let _elapsed = getDurationInUS(_start);
-        should(_elapsed).be.below(150);
+        should(_elapsed).be.below(220);
         done();
       }
       setTimeout(() => {

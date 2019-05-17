@@ -246,6 +246,39 @@ describe('jsonWebToken', function () {
       }
       _middlewareFn(_req, {}, next);
     });
+
+    it('should generate a function which verify Tokens (array of public keys)', function (done) {
+      let _clientId = '123';
+      let _serverId = 'service1';
+      let _expireIn = 10;
+      let _token = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv());
+
+      function getPublicKeyFn (req, res, payload, callback) {
+        should(payload.iss).equal(_clientId);
+        should(payload.aud).equal(_serverId);
+        // make it asynchrone
+        return setTimeout(() => {
+          callback([
+            getECDHPublic2(),
+            getECDHPublic()
+          ]);
+        }, 0);
+      }
+      let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
+      let _req          = {
+        headers : {
+          Authorization : 'Bearer ' + _token
+        }
+      };
+      function next (err) {
+        should(err).be.undefined();
+        should(_req.jwtPayload.iss).equal(_clientId);
+        should(_req.jwtPayload.aud).equal(_serverId);
+        should(_req.jwtPayload.exp).be.approximately((Date.now()/1000)+_expireIn, 10);
+        done();
+      }
+      _middlewareFn(_req, {}, next);
+    });
     it('should be extremely fast, even if there is a bad token client', function (done) {
       let _nbIteration = 2000;
       let _iteration = 0;
@@ -389,6 +422,7 @@ describe('jsonWebToken', function () {
         }
       };
       function next (err) {
+        console.log(err.toString())
         should(err+'').be.equal('Error: JSON Web Token expired');
         _start = process.hrtime();
         // should return the same error both (cache is used if asked two times)
@@ -499,6 +533,15 @@ mV+8hper5VKVe1cTfsg=
 -----END PUBLIC KEY-----
 `;
 }
+function getECDHPublic2() {
+  return `-----BEGIN PUBLIC KEY-----
+MIGbMBAGByqGSM49AgEGBSuBBAAjA4GGAAQBgbcJCeXqEzZgPc+qTnL19QC1c+M4
+XtC23FqYCNJBUqX8bvrUIV50W+Enpncrtvfaubo3a1Z7r1EiezgkWJ6Ax2kAyYr9
+JibYyLjJF40VphX0I8D7BZmLR3ZNJFb9cQdmS/c3Tc1IRTARYW27Kbb9SooytfXi
+RZHOmq9PHStB8TBIbWw=
+-----END PUBLIC KEY-----
+`;
+}
 function getECDHPriv () { 
   return `-----BEGIN EC PRIVATE KEY-----
 MIHcAgEBBEIBPVWtkiEJWdPW1t8+CYAMKBr1VdAO4sU15AZNJopFcRdeCZSEOOF2
@@ -507,7 +550,17 @@ xpu4q6JFxKSAI91OFXh9krcIQVwrTsmd0hr4ZqWzn8kLmRACVyc+27d2kxurAVzD
 yTsDF13/KV2v6ac6jwFv5fEQ3C2A7mdA7jDUhW9cEUdA/mz8e0j5U+q4kF4jvk+p
 sBZBpRdN2TIXicSlNSydPuGZX7yGl6vlUpV7VxN+yA==
 -----END EC PRIVATE KEY-----
-`;     
+`;
+}
+function getECDHPriv2 () {
+  return `-----BEGIN EC PRIVATE KEY-----
+MIHcAgEBBEIBhrbcR3BW3tbTZ5YK3BOXaQrJWLIeVpG5uaJWzRtHxI/qiYnNj4CQ
+PySqcryqGpvDL9lV089xskx9/ysn4NW1t0qgBwYFK4EEACOhgYkDgYYABAGBtwkJ
+5eoTNmA9z6pOcvX1ALVz4zhe0LbcWpgI0kFSpfxu+tQhXnRb4Semdyu299q5ujdr
+VnuvUSJ7OCRYnoDHaQDJiv0mJtjIuMkXjRWmFfQjwPsFmYtHdk0kVv1xB2ZL9zdN
+zUhFMBFhbbsptv1KijK19eJFkc6ar08dK0HxMEhtbA==
+-----END EC PRIVATE KEY-----
+`;
 }
 
 function getPayload (token, encoded) {

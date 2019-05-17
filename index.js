@@ -219,6 +219,27 @@ function getToken (clientId, serverId, privKey) {
   return _newToken;
 }
 
+function _assertKeys (keys, payload, tokenString, signature, token, callback, i = 0) {
+  const _assertKey = (key, callback) => {
+    verifyToken(payload, tokenString, signature, key, (err) => {
+      serverCache.set(token, { payload: payload, err: err });
+      if (err) {
+        return callback(err);
+      }
+      callback(null);
+    });
+  }
+  _assertKey(keys[i], err => {
+    if (err) {
+      if (i === keys.length - 1) {
+        return callback(new Error('Invalid JSON Web Token signature'));
+      }
+      return _assertKeys(keys, payload, tokenString, signature, token, callback, i + 1);
+    }
+    callback();
+  });
+}
+
 /**
  * Generate a middleware for Express
  * 
@@ -265,8 +286,10 @@ function verifyHTTPHeaderFn (serverId, getPublicKeyFn) {
         return next(_err);
       }
       getPublicKeyFn(req, res, payload, function (publicKey) {
-        verifyToken(payload, tokenString, signature, publicKey, (err) => {
-          serverCache.set(_token, { payload : payload, err : err });
+        if (publicKey.constructor !== Array) {
+          publicKey = [publicKey];
+        }
+        _assertKeys(publicKey, payload, tokenString, signature,_token, err => {
           if (err) {
             return next(err);
           }

@@ -422,7 +422,6 @@ describe('jsonWebToken', function () {
         }
       };
       function next (err) {
-        console.log(err.toString())
         should(err+'').be.equal('Error: JSON Web Token expired');
         _start = process.hrtime();
         // should return the same error both (cache is used if asked two times)

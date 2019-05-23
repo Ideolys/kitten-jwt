@@ -199,8 +199,9 @@ function verify (jwt, publicKey, callback) {
  * @param  {Mixed}  clientId client id 
  * @param  {Mixed}  serverId server id
  * @param  {String} privKey  private key
+ * @param  {Object} data     user data
  */
-function getToken (clientId, serverId, privKey) {
+function getToken (clientId, serverId, privKey, data) {
   let _cacheKey = clientId + '_' + serverId;
 
   let _cachedToken = clientCache.get(_cacheKey);
@@ -208,7 +209,7 @@ function getToken (clientId, serverId, privKey) {
   if ( _cachedToken !== undefined && _now < (_cachedToken.expireAt - CLIENT_RENEW_LIMIT) && _cachedToken.privKey === privKey ) {
     return _cachedToken.token;
   }
-  let _newToken = generate(clientId, serverId, DEFAULT_EXPIRE_IN, privKey);
+  let _newToken = generate(clientId, serverId, DEFAULT_EXPIRE_IN, privKey, data);
 
   clientCache.set(_cacheKey, {
     token    : _newToken,

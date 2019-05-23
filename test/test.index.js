@@ -101,6 +101,22 @@ describe('jsonWebToken', function () {
       console.log('\n\n' + _tokenPerSecond + ' tokens per seconds with getToken\n');
       done();
     });
+    it('should return data in token', function (done) {
+      let _clientId = '123';
+      let _serverId = 'service1';
+      let _data     = {
+        id   : 1,
+        name : 'test'
+      };
+      let _token    = jwt.getToken(_clientId, _serverId, getECDHPriv(), _data);
+      jwt.verify(_token, getECDHPublic(), (err, payload) => {
+        should(err).be.null();
+        should(payload.iss).equal(_clientId);
+        should(payload.aud).equal(_serverId);
+        should.deepEqual(payload.data, _data);
+        done();
+      });
+    });
   });
   describe('verify()', function () {
     it('should verify a valid token', function (done) {

@@ -242,17 +242,19 @@ function _assertKeys (keys, payload, tokenString, signature, token, callback, i 
 }
 
 /**
- * Generate a middleware for Express
- * 
- * @param  {Mixed}  serverId       accepted server id
- * @param  {String} getPublicKeyFn public key of client
- * @return {Function}              with parameters (req, res, next)
+ * Check if a token exists in Authorization header first or in cookies
+ * and return the token
+ * @param {Object} req Req from request
+ * @param {Function} next
  */
-function verifyHTTPHeaderFn (serverId, getPublicKeyFn) {
-  return function (req, res, next) {
-    if (!req.headers) {
-      return next(new Error('JSON Web Token - No HTTP header detected'));
+function _getRequestToken (req, next) {
+  if (!req.headers) {
+    if (req.cookies === undefined || req.cookies.access_token === undefined) {
+      return next(new Error('JSON Web Token - No HTTP header detected nor cookies'));
+    } else {
+      return next(null, req.cookies.access_token);
     }
+  } else {
     let _auth = req.headers.Authorization || req.headers.authorization;
     if (typeof _auth !== 'string') {
       return next(new Error('No Authorization HTTP header detected. Format is "Authorization: Bearer jwt"'));
@@ -261,41 +263,60 @@ function verifyHTTPHeaderFn (serverId, getPublicKeyFn) {
       return next(new Error('No Bearer JSON Web Token detected. Format is "Authorization: Bearer jwt"'));
     }
     let _token = _auth.slice(7);
+    return next(null, _token);
+  }
+}
 
-    // is it in cache, fast return of errors or not
-    let _cachedToken = serverCache.get(_token);
-    if (_cachedToken) {
-      if (_cachedToken.payload !== undefined && _cachedToken.payload.exp !== undefined && Date.now() > parseInt(_cachedToken.payload.exp, 10) * 1000) {
-        _cachedToken.err = new Error('JSON Web Token expired');
-      }
-      if (_cachedToken.err) {
-        return next(_cachedToken.err);
-      }
-      req.jwtPayload = _cachedToken.payload;
-      return next();
-    }
-
-    // otherwise, compute everything
-    parseToken(_token, (err, payload, tokenString, signature) => {
+/**
+ * Generate a middleware for Express
+ *
+ * @param  {Mixed}  serverId       accepted server id
+ * @param  {String} getPublicKeyFn public key of client
+ * @return {Function}              with parameters (req, res, next)
+ */
+function verifyHTTPHeaderFn (serverId, getPublicKeyFn) {
+  return function (req, res, next) {
+    // Get token in authorization header or cookies
+    _getRequestToken(req, (err, _token) => {
       if (err) {
-        serverCache.set(_token, { payload : payload, err : err });
         return next(err);
       }
-      if (payload && payload.aud !== serverId) {
-        let _err = new Error('Invalid JSON Web Token audience');
-        serverCache.set(_token, { payload : payload, err : _err });
-        return next(_err);
-      }
-      getPublicKeyFn(req, res, payload, function (publicKey) {
-        if (publicKey.constructor !== Array) {
-          publicKey = [publicKey];
+
+      // is it in cache, fast return of errors or not
+      let _cachedToken = serverCache.get(_token);
+      if (_cachedToken) {
+        if (_cachedToken.payload !== undefined && _cachedToken.payload.exp !== undefined && Date.now() > parseInt(_cachedToken.payload.exp, 10) * 1000) {
+          _cachedToken.err = new Error('JSON Web Token expired');
         }
-        _assertKeys(publicKey, payload, tokenString, signature,_token, err => {
-          if (err) {
-            return next(err);
+        if (_cachedToken.err) {
+          return next(_cachedToken.err);
+        }
+        req.jwtPayload = _cachedToken.payload;
+        return next();
+      }
+
+      // otherwise, compute everything
+      parseToken(_token, (err, payload, tokenString, signature) => {
+        if (err) {
+          serverCache.set(_token, { payload : payload, err : err });
+          return next(err);
+        }
+        if (payload && payload.aud !== serverId) {
+          let _err = new Error('Invalid JSON Web Token audience');
+          serverCache.set(_token, { payload : payload, err : _err });
+          return next(_err);
+        }
+        getPublicKeyFn(req, res, payload, function (publicKey) {
+          if (publicKey.constructor !== Array) {
+            publicKey = [publicKey];
           }
-          req.jwtPayload = payload;
-          next();
+          _assertKeys(publicKey, payload, tokenString, signature,_token, err => {
+            if (err) {
+              return next(err);
+            }
+            req.jwtPayload = payload;
+            next();
+          });
         });
       });
     });

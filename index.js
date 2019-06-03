@@ -248,7 +248,7 @@ function _assertKeys (keys, payload, tokenString, signature, token, callback, i 
  * @param {Function} next
  */
 function _getRequestToken (req, next) {
-  if (!req.headers) {
+  if (req.headers === undefined || (req.headers.Authorization === undefined && req.headers.authorization === undefined)) {
     if (req.cookies === undefined || req.cookies.access_token === undefined) {
       return next(new Error('JSON Web Token - No HTTP header detected nor cookies'));
     } else {

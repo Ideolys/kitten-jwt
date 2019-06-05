@@ -1,4 +1,3 @@
-const crypto = require('crypto');
 const path   = require('path');
 const exec   = require('child_process').exec;
 const jwa    = require('jwa');
@@ -11,7 +10,7 @@ const ALGORITHM_NAME = 'ES'+ALGORITHM_BITS;
 const ALGORITHM_SIGN = 'secp521r1'; // 'prime256v1';
 const ecdsa          = jwa(ALGORITHM_NAME);
 
-const CLIENT_CACHE_SIZE_MAX = 50;
+const CLIENT_CACHE_SIZE_MAX = 200;
 const clientCache           = new Qlru({maxSize : CLIENT_CACHE_SIZE_MAX});
 // how many time before expiration do we renew the token in millisecond
 const CLIENT_RENEW_LIMIT    = 60 * 20 * 1000; 
@@ -19,6 +18,8 @@ const CLIENT_RENEW_LIMIT    = 60 * 20 * 1000;
 
 const SERVER_CACHE_SIZE_MAX = 1000;
 const serverCache = new Qlru({maxSize : SERVER_CACHE_SIZE_MAX});
+
+const TOKEN_COOKIE_REGEXP = /access_token\s*=([^;]+?)(?:;|$)/;
 
 /**
  * Decode base64 url if there is in the token
@@ -119,37 +120,39 @@ function parseToken (jwt, callback) {
   let _payloadBase64 = _segments[1];
   let _signature     = _segments[2];
   let _tokenString   = _headerBase64 + '.' + _payloadBase64;
+  let _header        = null;
+  let _payload       = null;
 
   try {
     let _headerString  = base64urlDecode(_headerBase64);
     let _payloadString = base64urlDecode(_payloadBase64);
-    let _header        = JSON.parse(_headerString);
-    let _payload       = JSON.parse(_payloadString);
-
-    if (!(_payload instanceof Object)) {
-      return callback(new Error('Invalid Payload JSON Web token. It is not an object'));
-    }
-
-    if (!(_header instanceof Object)) {
-      return callback(new Error('Invalid Header JSON Web Token. It is not an object'));
-    }
-
-    if (_header.alg !== ALGORITHM_NAME) {
-      return callback(new Error('Algorithm not accepted for JSON Web Token. Only ' + ALGORITHM_NAME + ' is accepted'));
-    }
-
-    if (_payload.exp && Date.now() > parseInt(_payload.exp, 10) * 1000) {
-      return callback(new Error('JSON Web Token expired'));
-    }
-
-    if (_payload.iss === '' || _payload.iss === undefined || _payload.iss === null) {
-      return callback(new Error('JSON Web Token without issuer'));
-    }
-    return callback(null, _payload, _tokenString, _signature);
+    _header            = JSON.parse(_headerString);
+    _payload           = JSON.parse(_payloadString);
   }
   catch (e) {
-    return callback(new Error('Invalid JSON Web Token ' + e.toString()));
+    return callback(new Error('Invalid JSON Web Token: ' + e.message));
   }
+
+  if (!(_payload instanceof Object)) {
+    return callback(new Error('Invalid Payload JSON Web token. It is not an object'));
+  }
+
+  if (!(_header instanceof Object)) {
+    return callback(new Error('Invalid Header JSON Web Token. It is not an object'));
+  }
+
+  if (_header.alg !== ALGORITHM_NAME) {
+    return callback(new Error('Algorithm not accepted for JSON Web Token. Only ' + ALGORITHM_NAME + ' is accepted'));
+  }
+
+  if (_payload.exp && Date.now() > parseInt(_payload.exp, 10) * 1000) {
+    return callback(new Error('JSON Web Token expired'));
+  }
+
+  if (_payload.iss === '' || _payload.iss === undefined || _payload.iss === null) {
+    return callback(new Error('JSON Web Token without issuer'));
+  }
+  return callback(null, _payload, _tokenString, _signature);
 }
 
 /**
@@ -172,7 +175,7 @@ function verifyToken (payload, tokenString, signature, publicKey, callback) {
     }
 
   } catch (e) {
-    return callback(new Error('Invalid JSON Web Token' + e.toString()));
+    return callback(new Error('Invalid JSON Web Token: ' + e.message));
   }
   return callback(null, payload);
 }
@@ -199,8 +202,9 @@ function verify (jwt, publicKey, callback) {
  * @param  {Mixed}  clientId client id 
  * @param  {Mixed}  serverId server id
  * @param  {String} privKey  private key
+ * @param  {Object} data     user data
  */
-function getToken (clientId, serverId, privKey) {
+function getToken (clientId, serverId, privKey, data) {
   let _cacheKey = clientId + '_' + serverId;
 
   let _cachedToken = clientCache.get(_cacheKey);
@@ -208,7 +212,7 @@ function getToken (clientId, serverId, privKey) {
   if ( _cachedToken !== undefined && _now < (_cachedToken.expireAt - CLIENT_RENEW_LIMIT) && _cachedToken.privKey === privKey ) {
     return _cachedToken.token;
   }
-  let _newToken = generate(clientId, serverId, DEFAULT_EXPIRE_IN, privKey);
+  let _newToken = generate(clientId, serverId, DEFAULT_EXPIRE_IN, privKey, data);
 
   clientCache.set(_cacheKey, {
     token    : _newToken,
@@ -219,59 +223,118 @@ function getToken (clientId, serverId, privKey) {
   return _newToken;
 }
 
+
+/**
+ * Verify token with a list of public keys
+ * 
+ * @param  {Array}    publicKeys    array of public keys
+ * @param  {Object}   payload     
+ * @param  {String}   tokenString
+ * @param  {String}   signature
+ * @param  {Function} callback(err) 
+ * @param  {Number}   i             iterator of public keys
+ */
+function verifyTokenForEachPublicKey (publicKeys, payload, tokenString, signature, callback, i = 0) {
+  verifyToken(payload, tokenString, signature, publicKeys[i], (err) => {
+    i++;
+    if (!err || i >= publicKeys.length) {
+      return callback(err);
+    }
+    // avoid looping without releasing NodeJS event loop
+    process.nextTick(() => {
+      verifyTokenForEachPublicKey(publicKeys, payload, tokenString, signature, callback, i);
+    });
+  });
+}
+
+/**
+ * Check if a token exists in Authorization header first or in cookies
+ * 
+ * @param {Object} req Req from request
+ * @param {Function} callback(err, oken)
+ */
+function findToken (req, callback) {
+  if (!req.headers) {
+    return callback(new Error('JSON Web Token - No HTTP header detected'));
+  }
+  // Accept tokens in authorization header and cookies
+  let _token = req.headers.authorization || req.headers.Authorization || parseCookie(req.headers.cookie);
+
+  if (typeof _token !== 'string' || _token.length === 0) {
+    return callback(new Error('No JSON Web Token detected in Authorization header or Cookie. Format is "Authorization: jwt" or "Cookie: access_token=jwt"'));
+  }
+  // remove Bearer keyword if present
+  if (/^Bearer /i.test(_token) === true) {
+    return callback(null, _token.slice(7));
+  }
+  return callback(null, _token);
+}
+
+/**
+ * Parse cookie to get JWT in access_token key
+ * 
+ * @param  {String} cookie req.headers.cookie
+ * @return {String}        jwt if found, null otherwise
+ */ 
+function parseCookie (cookie) {
+  var _token = TOKEN_COOKIE_REGEXP.exec(cookie);
+  if (_token instanceof Array && _token.length > 1) {
+    return _token[1].trim();
+  }
+  return null;
+}
+
+
 /**
  * Generate a middleware for Express
- * 
+ *
  * @param  {Mixed}  serverId       accepted server id
  * @param  {String} getPublicKeyFn public key of client
  * @return {Function}              with parameters (req, res, next)
  */
 function verifyHTTPHeaderFn (serverId, getPublicKeyFn) {
   return function (req, res, next) {
-    if (!req.headers) {
-      return next(new Error('JSON Web Token - No HTTP header detected'));
-    }
-    let _auth = req.headers.Authorization || req.headers.authorization;
-    if (typeof _auth !== 'string') {
-      return next(new Error('No Authorization HTTP header detected. Format is "Authorization: Bearer jwt"'));
-    }
-    if (/^Bearer /i.test(_auth) === false) {
-      return next(new Error('No Bearer JSON Web Token detected. Format is "Authorization: Bearer jwt"'));
-    }
-    let _token = _auth.slice(7);
-
-    // is it in cache, fast return of errors or not
-    let _cachedToken = serverCache.get(_token);
-    if (_cachedToken) {
-      if (_cachedToken.payload !== undefined && _cachedToken.payload.exp !== undefined && Date.now() > parseInt(_cachedToken.payload.exp, 10) * 1000) {
-        _cachedToken.err = new Error('JSON Web Token expired');
-      }
-      if (_cachedToken.err) {
-        return next(_cachedToken.err);
-      }
-      req.jwtPayload = _cachedToken.payload;
-      return next();
-    }
-
-    // otherwise, compute everything
-    parseToken(_token, (err, payload, tokenString, signature) => {
+    // Get token in authorization header or cookies
+    findToken(req, (err, _token) => {
       if (err) {
-        serverCache.set(_token, { payload : payload, err : err });
         return next(err);
       }
-      if (payload && payload.aud !== serverId) {
-        let _err = new Error('Invalid JSON Web Token audience');
-        serverCache.set(_token, { payload : payload, err : _err });
-        return next(_err);
+
+      // is it in cache, fast return of errors or not
+      let _cachedToken = serverCache.get(_token);
+      if (_cachedToken) {
+        if (_cachedToken.payload !== undefined && _cachedToken.payload.exp !== undefined && Date.now() > parseInt(_cachedToken.payload.exp, 10) * 1000) {
+          _cachedToken.err = new Error('JSON Web Token expired');
+        }
+        if (_cachedToken.err) {
+          return next(_cachedToken.err);
+        }
+        req.jwtPayload = _cachedToken.payload;
+        return next();
       }
-      getPublicKeyFn(req, res, payload, function (publicKey) {
-        verifyToken(payload, tokenString, signature, publicKey, (err) => {
+
+      // otherwise, compute everything
+      parseToken(_token, (err, payload, tokenString, signature) => {
+        if (err) {
           serverCache.set(_token, { payload : payload, err : err });
-          if (err) {
-            return next(err);
-          }
-          req.jwtPayload = payload;
-          next();
+          return next(err);
+        }
+        if (payload && payload.aud !== serverId) {
+          let _err = new Error('Invalid JSON Web Token audience');
+          serverCache.set(_token, { payload : payload, err : _err });
+          return next(_err);
+        }
+        getPublicKeyFn(req, res, payload, function (publicKey) {
+          var _publicKeys = (publicKey instanceof Array) ? publicKey : [publicKey];
+          verifyTokenForEachPublicKey(_publicKeys, payload, tokenString, signature, (err) => {
+            // what ever happens, put result in cache
+            serverCache.set(_token, { payload : payload, err : err });
+            if (err) {
+              return next(err);
+            }
+            req.jwtPayload = payload;
+            next();
+          });
         });
       });
     });
@@ -294,6 +357,7 @@ module.exports = {
   getToken,
   resetCache,
   generateECDHKeys,
+  parseCookie,
   generateAuto : getToken // deprecated
 };
 

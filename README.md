@@ -15,6 +15,8 @@ The first purpose of this module is to solve these two problems.
 
 When discovering JWT, you do not know what signing algorithm to choose and where to put your data (issuer, audience, ...).
 This module solves this for you. It chooses a highly secured algorithm by default. If you want another algorithm, fork it.
+The algorithm used (asymmetric) allow the client to generate himself a token without having to exchange a secret with the server.
+Only the public key is exchanged.
 
 To save extra bandwidth, it let you define only two parameters : a client id ("Alice", issuer), and a server id ("Bob", audience).
 The generated token allows only Alice (clientId) to speak exclusively to Bob (serverId).
@@ -38,21 +40,32 @@ Main purpose : be plug'n'play for developers who do not have a lot of time.
 
 ## Getting started
 
-* On client-side
+#### 1) On client-side
+
+Using `request` module for example:
 
 ```js
   var jwt = require('kitten-jwt');
 
   // Generate an ephemeral jwt token (short expiration date), auto-renewed every 12-hour by default
   // This function is very fast (uses cache), it can be called for every HTTP request
-  var header = jwt.getToken('client-id-1220202', 'server-app-name', 'privKeyOfTheClient');
+  var token = jwt.getToken('client-id-1220202', 'server-app-name', 'privKeyOfTheClient');
 
   // Insert the token in HTTP Header, it will be parsed by jwt.verifyHTTPHeaderFn automatically
-  request.setHeader('Authorization', 'Bearer ' + header);
+  request.setHeader('Authorization', 'Bearer ' + token); // "Bearer" keyword is optional
 
 ```
 
-* On server-side 
+Or, if your client is a browser, store the JWT in a `cookie` instead of `Authorization` header.
+With `ExpressJS`:
+
+```js
+  // let the browser send it back automatically. 
+  // Do not forget to refresh it before the 12-hour expiration
+  response.cookie('access_token', token);
+```
+
+#### 2) On server-side 
 
 ```js
   var jwt = require('kitten-jwt');
@@ -60,12 +73,14 @@ Main purpose : be plug'n'play for developers who do not have a lot of time.
   // custom method to get the client public key, kitten-jwt caches the result automatically
   function getPublicKeyFn(req, res, payload, callback) {
     var _clientId = payload.iss;
-    // do whatever you want: db query, file read
+    // do whatever you want: db query, file read to return the public key
+    // it accepts an array of public key ['pubKeyOfTheClient1', 'pubKeyOfTheClient2']
     return callback('pubKeyOfTheClient');
   }
 
   // use the helper function to verify token in an express middleware
   // This function is very fast (uses lru-cache)
+  // It searches JWT in req.header.authorization, then in req.header.cookie.<access_token>
   express().use(jwt.verifyHTTPHeaderFn('server-app-name', getPublicKeyFn));
 
   // if the public key changes
@@ -119,10 +134,11 @@ These functions uses cache to be as fast as possible
 
 * `jwt.verifyHTTPHeaderFn (serverId, getPublicKeyFn)`
 
-  Generate a function(req, req, next)<br>
-  Set req.jwtPayload
+  Generate a middleware `function(req, req, next)`<br>
+  Verify and set `req.jwtPayload`
 
-  - getPublicKeyFn    : Function(req, res, payload, callback) which returns publicKey in callback(pubKey)
+  - getPublicKeyFn    : Function(req, res, payload, callback) which must call the `callback(String|Array)` where 
+                        the parameter is either a string (one public key) or an array of strings (mutliple public key to test)
   - serverId          : JWT audience, token.aud
   if the token is invalid, next(err) is called. Thus you can catch the error in another 4-parameter middlewares.
 
@@ -152,6 +168,18 @@ These APIs should **not be used direclty in a web app because nothing is cached 
 * `jwt.generateKeys (outputDir, outputKeyName)` : generate pub / priv ECDSA keys
 
 
+
+## CHANGELOG
+
+**1.0.0**
+
+- Possibility to verify a token with multiple public keys. `getPublicKeyFn` can return an array of public keys
+- Increase key cache to 200
+- Improve error output
+- Accepts token in cookie `access_token`
+- Accepts token without key word "Bearer"
+
+
 ## Notes 
 
 TODO :
@@ -163,4 +191,3 @@ https://weakdh.org/imperfect-forward-secrecy-ccs15.pdf
 https://www.npmjs.com/package/sodium
 https://github.com/volschin/node-curve25519
 https://ianix.com/pub/curve25519-deployment.html
-

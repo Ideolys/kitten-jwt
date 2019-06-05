@@ -1,5 +1,4 @@
 const should    = require('should');
-const crypto    = require('crypto');
 const jwtVendor = require('jsonwebtoken');
 const jwt       = require('../index.js');
 const tk        = require('timekeeper');
@@ -36,7 +35,7 @@ describe('jsonWebToken', function () {
       });
     });
     it('should be fast enough', function (done) {
-      let _nbIteration = 1000;
+      let _nbIteration = 500;
       let _iteration = 0;
       let _tokens = [];
       let _clientId = '123';
@@ -49,11 +48,27 @@ describe('jsonWebToken', function () {
       }
       let _elapsed = getDurationInUS(_start);
       let _tokenPerSecond = parseInt( _iteration / (_elapsed / 1e6) , 10);
-      should(_tokenPerSecond).be.above(600);
+      should(_tokenPerSecond).be.above(350);
       console.log('\n\n' + _tokenPerSecond + ' token generated per seconds\n');
       done();
     });
   });
+  describe('parseCookie()', function () {
+    it('should not crash if cookie is undefined or null', function () {
+      should(jwt.parseCookie()).equal(null);
+      should(jwt.parseCookie(null)).equal(null);
+    });
+    it('should parse jwt in cookie', function () {
+      should(jwt.parseCookie('access_token=azertyu')).equal('azertyu');
+      should(jwt.parseCookie('access_token=gfhjfdjfdkfk;Max-age=2019-01-01')).equal('gfhjfdjfdkfk');
+      should(jwt.parseCookie('access_token=gfhjfdjfdkfk  ; Max-age=2019-01-01')).equal('gfhjfdjfdkfk');
+      should(jwt.parseCookie('access_token=   gfhjfdjfdkfk  ; Max-age=2019-01-01')).equal('gfhjfdjfdkfk');
+      should(jwt.parseCookie('  access_token   =   gfhjfdjfdkfk  ; Max-age=2019-01-01')).equal('gfhjfdjfdkfk');
+      should(jwt.parseCookie('otherkey=12233;  access_token   =   gfhjfdjfdkfk  ; Max-age=2019-01-01')).equal('gfhjfdjfdkfk');
+    });
+  });
+
+    
   describe('getToken()', function () {
     it('should generate a token and renew it automatically after 12-hour', function (done) {
       let _clientId = '123';
@@ -97,7 +112,7 @@ describe('jsonWebToken', function () {
       }
       let _elapsed = getDurationInUS(_start);
       let _tokenPerSecond = parseInt( _iteration / (_elapsed / 1e6) , 10);
-      should(_tokenPerSecond).be.above(500000);
+      should(_tokenPerSecond).be.above(450000);
       console.log('\n\n' + _tokenPerSecond + ' tokens per seconds with getToken\n');
       done();
     });
@@ -184,6 +199,20 @@ describe('jsonWebToken', function () {
         }, 1200);
       });
     });
+    it('should return an error if the token cannot be parsed', function (done) {
+      let _token = 'ccc';
+      jwt.verify(_token, getECDHPublic(), (err) => {
+        should(err+'').equal('Error: Invalid JSON Web Token: Not enough or too many segments');
+        done();
+      });
+    });
+    it('should return an error if the token cannot be parsed', function (done) {
+      let _token = '..{"toto" : "titi"}';
+      jwt.verify(_token, getECDHPublic(), (err) => {
+        should(err+'').equal('Error: Invalid JSON Web Token: Unexpected end of JSON input');
+        done();
+      });
+    });
     it('should return an error if the signature is not valid', function (done) {
       let _clientId = '123';
       let _serverId = 'service1';
@@ -263,7 +292,37 @@ describe('jsonWebToken', function () {
       _middlewareFn(_req, {}, next);
     });
 
-    it('should generate a function which verify Tokens (array of public keys)', function (done) {
+    it('should accepts tokens without Bearer keyword', function (done) {
+      let _clientId = '123';
+      let _serverId = 'service1';
+      let _expireIn = 10;
+      let _token    = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv());
+
+      function getPublicKeyFn (req, res, payload, callback) {
+        should(payload.iss).equal(_clientId);
+        should(payload.aud).equal(_serverId);
+        // make it asynchrone
+        return setTimeout(() => {
+          callback(getECDHPublic());
+        }, 0);
+      }
+      let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
+      let _req          = {
+        headers : {
+          Authorization : _token
+        }
+      };
+      function next (err) {
+        should(err).be.undefined();
+        should(_req.jwtPayload.iss).equal(_clientId);
+        should(_req.jwtPayload.aud).equal(_serverId);
+        should(_req.jwtPayload.exp).be.approximately((Date.now()/1000)+_expireIn, 10);
+        done();
+      }
+      _middlewareFn(_req, {}, next);
+    });
+
+    it('should accepts an array of public keys and tests each one', function (done) {
       let _clientId = '123';
       let _serverId = 'service1';
       let _expireIn = 10;
@@ -275,6 +334,7 @@ describe('jsonWebToken', function () {
         // make it asynchrone
         return setTimeout(() => {
           callback([
+            getECDHPublic2(),
             getECDHPublic2(),
             getECDHPublic()
           ]);
@@ -295,11 +355,69 @@ describe('jsonWebToken', function () {
       }
       _middlewareFn(_req, {}, next);
     });
+
+    it('should return an error if all public keys are invalid', function (done) {
+      let _clientId = '123';
+      let _serverId = 'service1';
+      let _expireIn = 10;
+      let _token = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv());
+
+      function getPublicKeyFn (req, res, payload, callback) {
+        should(payload.iss).equal(_clientId);
+        should(payload.aud).equal(_serverId);
+        // make it asynchrone
+        return setTimeout(() => {
+          callback([
+            getECDHPublic2(),
+            getECDHPublic2(),
+            getECDHPublic2()
+          ]);
+        }, 0);
+      }
+      let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
+      let _req          = {
+        headers : {
+          Authorization : 'Bearer ' + _token
+        }
+      };
+      function next (err) {
+        should(err+'').be.equal('Error: Invalid JSON Web Token signature');
+        done();
+      }
+      _middlewareFn(_req, {}, next);
+    });
+
+    it('should return an error if public keys array is empty', function (done) {
+      let _clientId = '123';
+      let _serverId = 'service1';
+      let _expireIn = 10;
+      let _token = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv());
+
+      function getPublicKeyFn (req, res, payload, callback) {
+        should(payload.iss).equal(_clientId);
+        should(payload.aud).equal(_serverId);
+        // make it asynchrone
+        return setTimeout(() => {
+          callback([]);
+        }, 0);
+      }
+      let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
+      let _req          = {
+        headers : {
+          authorization : 'Bearer ' + _token
+        }
+      };
+      function next (err) {
+        should(err+'').be.equal('Error: Invalid JSON Web Token: key must be a string or a buffer');
+        done();
+      }
+      _middlewareFn(_req, {}, next);
+    });
+
     it('should be extremely fast, even if there is a bad token client', function (done) {
       let _nbIteration = 2000;
       let _iteration = 0;
       let _nbNextCalled = 0;
-      let _clientId = '1';
       let _serverId = 'service1';
       let _expireIn = 10;
       let _token1    = jwt.generate('0', _serverId, _expireIn, getECDHPriv());
@@ -326,7 +444,7 @@ describe('jsonWebToken', function () {
             let _start = process.hrtime();
             while (_iteration < _nbIteration) {
               _iteration++;
-              let _selectedToken = parseInt(Math.random()*3);
+              let _selectedToken = parseInt(Math.random()*3, 10);
               _nbTokenToVerify[_selectedToken]++;
               let _req = { headers : { authorization : _tokens[_selectedToken] } };
               _middlewareFn(_req, {}, nextIteration);
@@ -348,7 +466,7 @@ describe('jsonWebToken', function () {
               let _tokenPerSecond = parseInt( _iteration / (_elapsed / 1e6) , 10);
               should(_nbTokenToVerify[0] + _nbTokenToVerify[1]).eql(_nbTokenVerifiedOk);
               should(_nbTokenToVerify[2]).eql(_nbTokenVerifiedKo);
-              should(_tokenPerSecond).be.above(400000);
+              should(_tokenPerSecond).be.above(280000);
               console.log('\n\n' + _tokenPerSecond + ' tokens per seconds verified by verifyHTTPHeaderFn middleware\n');
               done();
             }
@@ -408,8 +526,8 @@ describe('jsonWebToken', function () {
       }
       let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
       let _req          = {
-        cookies : {
-          access_token : _token
+        headers : {
+          cookie : 'access_token='+ _token
         }
       };
       function next (err) {
@@ -427,11 +545,9 @@ describe('jsonWebToken', function () {
       }
       _middlewareFn(_req, {}, next);
     });
-    it('should return an error if http Authorization header is undefined', function (done) {
+    it('should return an error if http Authorization header is empty', function (done) {
       let _clientId = '123';
       let _serverId = 'service1';
-      let _expireIn = 10;
-      let _token    = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv());
 
       function getPublicKeyFn (req, res, payload, callback) {
         should(payload.iss).equal(_clientId);
@@ -446,7 +562,48 @@ describe('jsonWebToken', function () {
         headers : {}
       };
       function next (err) {
-        should(err+'').be.equal('Error: No Authorization HTTP header detected. Format is "Authorization: Bearer jwt"');
+        should(err+'').be.equal('Error: No JSON Web Token detected in Authorization header or Cookie. Format is "Authorization: jwt" or "Cookie: access_token=jwt"');
+        done();
+      }
+      _middlewareFn(_req, {}, next);
+    });
+    it('should return an error if http Authorization header is undefined', function (done) {
+      let _clientId = '123';
+      let _serverId = 'service1';
+      function getPublicKeyFn (req, res, payload, callback) {
+        should(payload.iss).equal(_clientId);
+        should(payload.aud).equal(_serverId);
+        // make it asynchrone
+        return setTimeout(() => {
+          callback(getECDHPublic());
+        }, 0);
+      }
+      let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
+      let _req = {};
+      function next (err) {
+        should(err+'').be.equal('Error: JSON Web Token - No HTTP header detected');
+        done();
+      }
+      _middlewareFn(_req, {}, next);
+    });
+    it('should return an error if http Authorization header is null (it should not crash)', function (done) {
+      let _clientId = '123';
+      let _serverId = 'service1';
+
+      function getPublicKeyFn (req, res, payload, callback) {
+        should(payload.iss).equal(_clientId);
+        should(payload.aud).equal(_serverId);
+        // make it asynchrone
+        return setTimeout(() => {
+          callback(getECDHPublic());
+        }, 0);
+      }
+      let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
+      let _req = {
+        headers : null
+      };
+      function next (err) {
+        should(err+'').be.equal('Error: JSON Web Token - No HTTP header detected');
         done();
       }
       _middlewareFn(_req, {}, next);
@@ -487,7 +644,7 @@ describe('jsonWebToken', function () {
       function nextAndEnd (err) {
         should(err+'').be.equal('Error: JSON Web Token expired');
         let _elapsed = getDurationInUS(_start);
-        should(_elapsed).be.below(220);
+        should(_elapsed).be.below(390);
         done();
       }
       setTimeout(() => {
@@ -565,7 +722,7 @@ function getECDHPublic256 () {
         +'-----END PUBLIC KEY-----\n'
   ;
 }
-function getECDHPriv256 () { 
+function getECDHPriv256 () {
   return '-----BEGIN EC PRIVATE KEY-----\n'
        + 'MHcCAQEEIDCxGMFiS4IcWTYoc2esZqMpk7GgDc+sWpzX1bTrEpQ9oAoGCCqGSM49\n'
        + 'AwEHoUQDQgAEVzKI2nSLwOfDjaWsdfkGUuGFEeShY9RtMeCj7PBF2p3vFE1QrEBC\n'
@@ -583,7 +740,7 @@ mV+8hper5VKVe1cTfsg=
 -----END PUBLIC KEY-----
 `;
 }
-function getECDHPublic2() {
+function getECDHPublic2 () {
   return `-----BEGIN PUBLIC KEY-----
 MIGbMBAGByqGSM49AgEGBSuBBAAjA4GGAAQBgbcJCeXqEzZgPc+qTnL19QC1c+M4
 XtC23FqYCNJBUqX8bvrUIV50W+Enpncrtvfaubo3a1Z7r1EiezgkWJ6Ax2kAyYr9
@@ -592,7 +749,7 @@ RZHOmq9PHStB8TBIbWw=
 -----END PUBLIC KEY-----
 `;
 }
-function getECDHPriv () { 
+function getECDHPriv () {
   return `-----BEGIN EC PRIVATE KEY-----
 MIHcAgEBBEIBPVWtkiEJWdPW1t8+CYAMKBr1VdAO4sU15AZNJopFcRdeCZSEOOF2
 eUhAFocH57oBaoi9NQP5BFbsYjVjo7biZbmgBwYFK4EEACOhgYkDgYYABAAXK4Ew

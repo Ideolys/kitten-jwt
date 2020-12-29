@@ -4,6 +4,9 @@ const jwt       = require('../index.js');
 const tk        = require('timekeeper');
 
 describe('jsonWebToken', function () {
+  before(function() {
+    jwt.set({clientCacheSize : 100, serverCacheSize : 100});
+  })
   afterEach(function () {
     tk.reset();
     jwt.resetCache();
@@ -198,6 +201,23 @@ describe('jsonWebToken', function () {
           });
         }, 1200);
       });
+    });
+    it('should accept a parameter to set the current date', function (done) {
+      let _clientId = '123';
+      let _serverId = 'service1';
+      let _customNow = Date.now() - 86500 * 1000;
+      let _expireIn = -86400;
+      let _token = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv());
+      jwt.verify(_token, getECDHPublic(), (err, payload) => {
+        should(err).be.null();
+        should(payload.iss).equal(_clientId);
+        should(payload.aud).equal(_serverId);
+        should(payload.exp).be.approximately((Date.now()/1000)+_expireIn, 10);
+        jwt.verify(_token, getECDHPublic(), (err, payload) => {
+          should(err+'').equal('Error: JSON Web Token expired');
+          done();
+        }, _customNow + 200 * 1000);
+      }, _customNow);
     });
     it('should return an error if the token cannot be parsed', function (done) {
       let _token = 'ccc';

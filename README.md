@@ -29,7 +29,7 @@ Main purpose : be plug'n'play for developers who do not have a lot of time.
 - Ultra-fast JWT generator with automatic renewal every 12-hours for client side: 1 Million per second
 - Ultra-fast JWT verification using LRU-cache for server side: 0.5 Million per second
 - Fastify, Restify or Express authentication middleware
-- Highly secured by default with assymetric ECDSA keys (ES512)
+- Highly secured by default with asymmetric ECDSA keys (ES512)
 - ECDSA Public / Private key generator
 
 ## Installation
@@ -138,7 +138,7 @@ These functions uses cache to be as fast as possible
   Verify and set `req.jwtPayload`
 
   - getPublicKeyFn    : Function(req, res, payload, callback) which must call the `callback(String|Array)` where 
-                        the parameter is either a string (one public key) or an array of strings (mutliple public key to test)
+                        the parameter is either a string (one public key) or an array of strings (multiple public key to test)
   - serverId          : JWT audience, token.aud
   if the token is invalid, next(err) is called. Thus you can catch the error in another 4-parameter middlewares.
 
@@ -147,7 +147,7 @@ These functions uses cache to be as fast as possible
 
 ### Low-level API
 
-These APIs should **not be used direclty in a web app because nothing is cached (slow)**.
+These APIs should **not be used directly in a web app because nothing is cached (slow)**.
 
 * `jwt.generate (clientId, serverId, expiresIn, privKey, data)` : generate a token
 
@@ -159,17 +159,37 @@ These APIs should **not be used direclty in a web app because nothing is cached 
 
   It returns a signed base64 url encoded string of the token.
 
-* `jwt.verify (jwt, pubKey, callback)` : verify the signature of a token
+* `jwt.verify (jwt, pubKey, callback, now = Date.now())` : verify the signature of a token
 
   - jwt                     : JSON Web token string to verify
   - pubKey                  : public key
   - callback (err, payload) : callback, payload is an object
+  - now                     : current timestamp used to check if the token is expired
 
 * `jwt.generateKeys (outputDir, outputKeyName)` : generate pub / priv ECDSA keys
 
+* `jwt.set (options)` : set default options:
+  ```js
+  {
+    // client cache size used by getToken
+    clientCacheSize : 5,
+    // how many time before client token expiration kitten-cache renews tokens in millisecond
+    clientRenewTokenBeforeExp : 60 * 20 * 1000,
+    // default client tokens expiration in seconds
+    clientTokenExpiration : 60 * 60 * 12,
+    // server cache size used by verifyHTTPHeaderFn
+    serverCacheSize : 5
+  }
+  ```
 
 
 ## CHANGELOG
+
+**1.1.0**
+- replace quick-lru by kitten-cache (faster, lower memory consumption)
+- change default cache size with new function `set(options)`
+- WARNING: reduce server/client cache size to 5 by default to reduce memory consumption
+- set current timestamp in `verify` function
 
 **1.0.0**
 
@@ -184,7 +204,7 @@ These APIs should **not be used direclty in a web app because nothing is cached 
 
 TODO :
 
-- to save extra bandwithh:  kitten-jwt accepts and generate tokens with one-letter header instead of RFCs JWT header (optional)
+- to save extra bandwidth:  kitten-jwt accepts and generate tokens with one-letter header instead of RFCs JWT header (optional)
 - make expiration a little bit random
 - should i use https://en.wikipedia.org/wiki/Curve25519 ?
 https://weakdh.org/imperfect-forward-secrecy-ccs15.pdf

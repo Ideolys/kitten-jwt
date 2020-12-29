@@ -1,25 +1,56 @@
 const path   = require('path');
 const exec   = require('child_process').exec;
 const jwa    = require('jwa');
-const Qlru   = require('quick-lru');
+const cache  = require('kitten-cache');
 
-// default expiration of token in seconds
-const DEFAULT_EXPIRE_IN = 60 * 60 * 12;
 const ALGORITHM_BITS = '512';
 const ALGORITHM_NAME = 'ES'+ALGORITHM_BITS;
 const ALGORITHM_SIGN = 'secp521r1'; // 'prime256v1';
 const ecdsa          = jwa(ALGORITHM_NAME);
 
-const CLIENT_CACHE_SIZE_MAX = 200;
-const clientCache           = new Qlru({maxSize : CLIENT_CACHE_SIZE_MAX});
-// how many time before expiration do we renew the token in millisecond
-const CLIENT_RENEW_LIMIT    = 60 * 20 * 1000; 
-
-
-const SERVER_CACHE_SIZE_MAX = 1000;
-const serverCache = new Qlru({maxSize : SERVER_CACHE_SIZE_MAX});
-
 const TOKEN_COOKIE_REGEXP = /access_token\s*=([^;]+?)(?:;|$)/;
+
+let params = {
+  // client cache size used by getToken
+  clientCacheSize : 5,
+  // how many time before expiration do we renew the token in millisecond
+  clientRenewTokenBeforeExp : 60 * 20 * 1000,
+  // default expiration of token in seconds
+  clientTokenExpiration : 60 * 60 * 12,
+  // server cache size used by verifyHTTPHeaderFn
+  serverCacheSize : 5
+};
+
+let clientCache = new cache({size : params.clientCacheSize});
+let serverCache = new cache({size : params.serverCacheSize});
+
+
+/**
+ * Sets options
+ *
+ * @param  {Object}   options : {
+ *                                // client cache size used by getToken
+ *                                clientCacheSize : 5,
+ *                                // how many time before token expiration do we renew the token in millisecond
+ *                                clientRenewTokenBeforeExp : 60 * 20 * 1000,
+ *                                // default expiration of token in seconds
+ *                                clientTokenExpiration : 60 * 60 * 12,
+ *                                // server cache size used by verifyHTTPHeaderFn
+ *                                serverCacheSize : 5
+ *                              }
+ */
+function set (options) {
+  for(let _attr in options) {
+    if (params[_attr] !== undefined) {
+      params[_attr] = options[_attr]
+    }
+  }
+  // reset cache only if clientCacheSize or serverCacheSize changes
+  if (options.clientCacheSize || options.serverCacheSize) {
+    clientCache = new cache({size : params.clientCacheSize});
+    serverCache = new cache({size : params.serverCacheSize});
+  }
+}
 
 /**
  * Decode base64 url if there is in the token
@@ -110,8 +141,9 @@ function generate (clientId, serverId, expiresIn, privKey, data) {
  * 
  * @param  {String}   jwt      base64 token
  * @param  {Function} callback(err, parsedPayload)
+ * @param  {Integer}  now      Current timestamp in ms
  */
-function parseToken (jwt, callback) {
+function parseToken (jwt, callback, now = Date.now()) {
   let _segments = jwt.split('.');
   if (_segments.length !== 3) {
     return callback(new Error('Invalid JSON Web Token: Not enough or too many segments'));
@@ -145,7 +177,7 @@ function parseToken (jwt, callback) {
     return callback(new Error('Algorithm not accepted for JSON Web Token. Only ' + ALGORITHM_NAME + ' is accepted'));
   }
 
-  if (_payload.exp && Date.now() > parseInt(_payload.exp, 10) * 1000) {
+  if (_payload.exp && now > parseInt(_payload.exp, 10) * 1000) {
     return callback(new Error('JSON Web Token expired'));
   }
 
@@ -186,14 +218,15 @@ function verifyToken (payload, tokenString, signature, publicKey, callback) {
  * @param  {String}   jwt       base64 token
  * @param  {String}   publicKey public key
  * @param  {Function} callback(err, parsedPayload)
+ * @param  {Integer}  now       Current timestamp in ms
  */
-function verify (jwt, publicKey, callback) {
+function verify (jwt, publicKey, callback, now = Date.now()) {
   parseToken(jwt, (err, payload, tokenString, signature) => {
     if (err) {
       return callback(err);
     }
     return verifyToken(payload, tokenString, signature, publicKey, callback);
-  });
+  }, now);
 }
 
 /**
@@ -209,15 +242,15 @@ function getToken (clientId, serverId, privKey, data) {
 
   let _cachedToken = clientCache.get(_cacheKey);
   let _now = Date.now();
-  if ( _cachedToken !== undefined && _now < (_cachedToken.expireAt - CLIENT_RENEW_LIMIT) && _cachedToken.privKey === privKey ) {
+  if ( _cachedToken !== undefined && _now < (_cachedToken.expireAt - params.clientRenewTokenBeforeExp) && _cachedToken.privKey === privKey ) {
     return _cachedToken.token;
   }
-  let _newToken = generate(clientId, serverId, DEFAULT_EXPIRE_IN, privKey, data);
+  let _newToken = generate(clientId, serverId, params.clientTokenExpiration, privKey, data);
 
   clientCache.set(_cacheKey, {
     token    : _newToken,
     privKey  : privKey,
-    expireAt : _now + (DEFAULT_EXPIRE_IN * 1000)
+    expireAt : _now + (params.clientTokenExpiration * 1000)
   });
 
   return _newToken;
@@ -351,6 +384,7 @@ function resetCache () {
 }
 
 module.exports = {
+  set,
   verify,
   verifyHTTPHeaderFn,
   generate,

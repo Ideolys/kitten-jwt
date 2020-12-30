@@ -178,7 +178,7 @@ function parseToken (jwt, callback, now = Date.now()) {
   }
 
   if (_payload.exp && now > parseInt(_payload.exp, 10) * 1000) {
-    return callback(new Error('JSON Web Token expired'));
+    return callback(new Error('JSON Web Token expired'), _payload);
   }
 
   if (_payload.iss === '' || _payload.iss === undefined || _payload.iss === null) {
@@ -223,7 +223,7 @@ function verifyToken (payload, tokenString, signature, publicKey, callback) {
 function verify (jwt, publicKey, callback, now = Date.now()) {
   parseToken(jwt, (err, payload, tokenString, signature) => {
     if (err) {
-      return callback(err);
+      return callback(err, payload);
     }
     return verifyToken(payload, tokenString, signature, publicKey, callback);
   }, now);

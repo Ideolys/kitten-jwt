@@ -197,6 +197,7 @@ describe('jsonWebToken', function () {
         setTimeout(() => {
           jwt.verify(_token, getECDHPublic(), (err, payload) => {
             should(err+'').equal('Error: JSON Web Token expired');
+            should(payload.iss).equal(_clientId);
             done();
           });
         }, 1200);
@@ -486,7 +487,7 @@ describe('jsonWebToken', function () {
               let _tokenPerSecond = parseInt( _iteration / (_elapsed / 1e6) , 10);
               should(_nbTokenToVerify[0] + _nbTokenToVerify[1]).eql(_nbTokenVerifiedOk);
               should(_nbTokenToVerify[2]).eql(_nbTokenVerifiedKo);
-              should(_tokenPerSecond).be.above(280000);
+              should(_tokenPerSecond).be.above(200000);
               console.log('\n\n' + _tokenPerSecond + ' tokens per seconds verified by verifyHTTPHeaderFn middleware\n');
               done();
             }

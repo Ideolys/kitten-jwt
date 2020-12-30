@@ -166,7 +166,7 @@ These APIs should **not be used directly in a web app because nothing is cached 
   - callback (err, payload) : callback, payload is an object
   - now                     : current timestamp used to check if the token is expired
 
-* `jwt.generateKeys (outputDir, outputKeyName)` : generate pub / priv ECDSA keys
+* `jwt.generateECDHKeys (outputDir, outputKeyName, callback)` : generate pub / priv ECDSA keys
 
 * `jwt.set (options)` : set default options:
   ```js
@@ -184,6 +184,9 @@ These APIs should **not be used directly in a web app because nothing is cached 
 
 
 ## CHANGELOG
+
+**1.1.1**
+- `verify` returns payload even if the token is expired
 
 **1.1.0**
 - replace quick-lru by kitten-cache (faster, lower memory consumption)

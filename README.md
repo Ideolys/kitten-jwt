@@ -8,20 +8,20 @@ Keep It Simple, Stupid, Secure and Fast JWT module
 - Performance & Security focused
 - Light, low dependency
 
-Most of the time, people uses node-jsonwebtoken and express-jwt without using a cache mechanism 
-to verify tokens. This requires a lot of CPU for each request on server-side! 
+Most of the time people use node-jsonwebtoken and express-jwt without using a cache mechanism to verify tokens. 
+This requires a lot of CPU on the server side for each request! 
 On client-side, the token is generated once with an infinite expiration timestamp, which is not very secure.
 The first purpose of this module is to solve these two problems.
 
-When discovering JWT, you do not know what signing algorithm to choose and where to put your data (issuer, audience, ...).
-This module solves this for you. It chooses a highly secured algorithm by default. If you want another algorithm, fork it.
-The algorithm used (asymmetric) allow the client to generate himself a token without having to exchange a secret with the server.
+When you discover JWT, you do not know which signing algorithm to choose and where to put your data (issuer, audience, ...).
+This module solves this problem for you.  It selects a highly secure algorithm by default. If you want another algorithm, fork it.
+The algorithm used (asymmetric) allows the client to generate himself a token without having to exchange a secret with the server.
 Only the public key is exchanged.
 
-To save extra bandwidth, it let you define only two parameters : a client id ("Alice", issuer), and a server id ("Bob", audience).
+To save extra bandwidth, it allows you to define only two parameters: a client ID ("Alice", issuer) and a server ID ("Bob", recipient).
 The generated token allows only Alice (clientId) to speak exclusively to Bob (serverId).
 
-Main purpose : be plug'n'play for developers who do not have a lot of time.
+Main purpose : to be plug'n'play for developers who do not have much of time.
 
 ## Features
 
@@ -75,7 +75,7 @@ With `ExpressJS`:
     var _clientId = payload.iss;
     // do whatever you want: db query, file read to return the public key
     // it accepts an array of public key ['pubKeyOfTheClient1', 'pubKeyOfTheClient2']
-    return callback('pubKeyOfTheClient');
+    return callback(null /* error object*/, 'pubKeyOfTheClient');
   }
 
   // use the helper function to verify token in an express middleware
@@ -137,8 +137,8 @@ These functions uses cache to be as fast as possible
   Generate a middleware `function(req, req, next)`<br>
   Verify and set `req.jwtPayload`
 
-  - getPublicKeyFn    : Function(req, res, payload, callback) which must call the `callback(String|Array)` where 
-                        the parameter is either a string (one public key) or an array of strings (multiple public key to test)
+  - getPublicKeyFn    : Function(req, res, payload, callback) which must call the `callback(err, String|Array)` where 
+                        the second parameter is either a string (one public key) or an array of strings (multiple public key to test)
   - serverId          : JWT audience, token.aud
   if the token is invalid, next(err) is called. Thus you can catch the error in another 4-parameter middlewares.
 
@@ -172,23 +172,37 @@ These APIs should **not be used directly in a web app because nothing is cached 
   ```js
   {
     // client cache size used by getToken
-    clientCacheSize : 5,
+    clientCacheSize : 255,
     // how many time before client token expiration kitten-cache renews tokens in millisecond
     clientRenewTokenBeforeExp : 60 * 20 * 1000,
     // default client tokens expiration in seconds
     clientTokenExpiration : 60 * 60 * 12,
     // server cache size used by verifyHTTPHeaderFn
-    serverCacheSize : 5
+    serverCacheSize : 255,
+    // Invalidate bad token cache after XX milliseconds when the error is coming from getPublicKey
+    serverGetPublicKeyErrorCacheExpiration : 120 * 1000
   }
   ```
 
 
 ## CHANGELOG
 
+**2.0.0**
+
+- BREAKING CHANGE: `getPublicKeyFn(req, res, payload, callback)` must call the callback with two arguments: `callback(err, publicKeys)`
+- Add a new parameter `serverGetPublicKeyErrorCacheExpiration` to invalidate bad token cache after 120 seconds (by default) when the error comes from the `getPublicKeyFn` function.
+  Before this new feature, if the public key was not available (temporary network / disk / database issue for example), the token was stored in the quarantine area forever.
+- Bump dependencies
+- Increase default cache size to 255
+- Fix README
+
+
 **1.1.1**
+
 - `verify` returns payload even if the token is expired
 
 **1.1.0**
+
 - replace quick-lru by kitten-cache (faster, lower memory consumption)
 - change default cache size with new function `set(options)`
 - WARNING: reduce server/client cache size to 5 by default to reduce memory consumption
@@ -207,10 +221,8 @@ These APIs should **not be used directly in a web app because nothing is cached 
 
 TODO :
 
+- Check if we are faster than https://github.com/nearform/fast-jwt 
+- Add the ed25516 algorithm (faster)
 - to save extra bandwidth:  kitten-jwt accepts and generate tokens with one-letter header instead of RFCs JWT header (optional)
-- make expiration a little bit random
-- should i use https://en.wikipedia.org/wiki/Curve25519 ?
-https://weakdh.org/imperfect-forward-secrecy-ccs15.pdf
-https://www.npmjs.com/package/sodium
-https://github.com/volschin/node-curve25519
-https://ianix.com/pub/curve25519-deployment.html
+- Make expiration a little bit random
+

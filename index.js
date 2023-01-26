@@ -12,13 +12,15 @@ const TOKEN_COOKIE_REGEXP = /access_token\s*=([^;]+?)(?:;|$)/;
 
 let params = {
   // client cache size used by getToken
-  clientCacheSize : 5,
+  clientCacheSize : 255,
   // how many time before expiration do we renew the token in millisecond
   clientRenewTokenBeforeExp : 60 * 20 * 1000,
   // default expiration of token in seconds
   clientTokenExpiration : 60 * 60 * 12,
   // server cache size used by verifyHTTPHeaderFn
-  serverCacheSize : 5
+  serverCacheSize : 255,
+  // Invalidate bad token cache after XX milliseconds when the error is coming from getPublicKey
+  serverGetPublicKeyErrorCacheExpiration : 120 * 1000
 };
 
 let clientCache = new cache({size : params.clientCacheSize});
@@ -332,11 +334,12 @@ function verifyHTTPHeaderFn (serverId, getPublicKeyFn) {
       if (err) {
         return next(err);
       }
+      const _now = Date.now();
 
       // is it in cache, fast return of errors or not
       let _cachedToken = serverCache.get(_token);
-      if (_cachedToken) {
-        if (_cachedToken.payload !== undefined && _cachedToken.payload.exp !== undefined && Date.now() > parseInt(_cachedToken.payload.exp, 10) * 1000) {
+      if (_cachedToken && (_cachedToken.expireAt === 0 || _cachedToken.expireAt > _now)) {
+        if (_cachedToken.payload !== undefined && _cachedToken.payload.exp !== undefined && _now > parseInt(_cachedToken.payload.exp, 10) * 1000) {
           _cachedToken.err = new Error('JSON Web Token expired');
         }
         if (_cachedToken.err) {
@@ -349,19 +352,25 @@ function verifyHTTPHeaderFn (serverId, getPublicKeyFn) {
       // otherwise, compute everything
       parseToken(_token, (err, payload, tokenString, signature) => {
         if (err) {
-          serverCache.set(_token, { payload : payload, err : err });
+          serverCache.set(_token, { payload : payload, err : err, expireAt : 0 });
           return next(err);
         }
         if (payload && payload.aud !== serverId) {
           let _err = new Error('Invalid JSON Web Token audience');
-          serverCache.set(_token, { payload : payload, err : _err });
+          serverCache.set(_token, { payload : payload, err : _err, expireAt : 0 });
           return next(_err);
         }
-        getPublicKeyFn(req, res, payload, function (publicKey) {
+        getPublicKeyFn(req, res, payload, function (errPublicKey, publicKey) {
           var _publicKeys = (publicKey instanceof Array) ? publicKey : [publicKey];
+          if (errPublicKey || !publicKey || _publicKeys.length === 0) {
+            // If we cannot get the public key, store this error in cache with an expiration date
+            const _err = new Error('Empty public key or no public key available');
+            serverCache.set(_token, { payload : payload, err : _err, expireAt : (_now + params.serverGetPublicKeyErrorCacheExpiration) });
+            return next(_err);
+          }
           verifyTokenForEachPublicKey(_publicKeys, payload, tokenString, signature, (err) => {
             // what ever happens, put result in cache
-            serverCache.set(_token, { payload : payload, err : err });
+            serverCache.set(_token, { payload : payload, err : err, expireAt : 0 });
             if (err) {
               return next(err);
             }

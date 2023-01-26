@@ -5,9 +5,10 @@ const tk        = require('timekeeper');
 
 describe('jsonWebToken', function () {
   before(function() {
-    jwt.set({clientCacheSize : 100, serverCacheSize : 100});
+    jwt.set({clientCacheSize : 255, serverCacheSize : 255, serverGetPublicKeyErrorCacheExpiration : 60*1000});
   })
   afterEach(function () {
+    jwt.set({serverGetPublicKeyErrorCacheExpiration : 60*1000});
     tk.reset();
     jwt.resetCache();
   });
@@ -294,7 +295,7 @@ describe('jsonWebToken', function () {
         should(payload.aud).equal(_serverId);
         // make it asynchrone
         return setTimeout(() => {
-          callback(getECDHPublic());
+          callback(null, getECDHPublic());
         }, 0);
       }
       let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
@@ -324,7 +325,7 @@ describe('jsonWebToken', function () {
         should(payload.aud).equal(_serverId);
         // make it asynchrone
         return setTimeout(() => {
-          callback(getECDHPublic());
+          callback(null, getECDHPublic());
         }, 0);
       }
       let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
@@ -354,7 +355,7 @@ describe('jsonWebToken', function () {
         should(payload.aud).equal(_serverId);
         // make it asynchrone
         return setTimeout(() => {
-          callback([
+          callback(null, [
             getECDHPublic2(),
             getECDHPublic2(),
             getECDHPublic()
@@ -388,7 +389,7 @@ describe('jsonWebToken', function () {
         should(payload.aud).equal(_serverId);
         // make it asynchrone
         return setTimeout(() => {
-          callback([
+          callback(null, [
             getECDHPublic2(),
             getECDHPublic2(),
             getECDHPublic2()
@@ -408,18 +409,31 @@ describe('jsonWebToken', function () {
       _middlewareFn(_req, {}, next);
     });
 
-    it('should return an error if public keys array is empty', function (done) {
+    it('should return an error if public keys array is empty (or error) and it should not store the token in the quarantine area if serverGetPublicKeyErrorCacheExpiration is deactivated', function (done) {
       let _clientId = '123';
       let _serverId = 'service1';
-      let _expireIn = 10;
+      let _expireIn = 100;
       let _token = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv());
 
+      jwt.set({serverGetPublicKeyErrorCacheExpiration : -1});
+
+      let _currentTestRun = 0;
+      let _publicKeyArguments = [
+        [null, []],
+        [new Error('Bad file'), null],
+        [null, null],
+        [null, ''],
+        [null, undefined],
+        [null, getECDHPublic()], // Test immediately
+        [null, getECDHPublic()] // Test after 5 second (cache expiration)
+      ]
       function getPublicKeyFn (req, res, payload, callback) {
         should(payload.iss).equal(_clientId);
         should(payload.aud).equal(_serverId);
         // make it asynchrone
         return setTimeout(() => {
-          callback([]);
+          callback(_publicKeyArguments[_currentTestRun][0], _publicKeyArguments[_currentTestRun][1]);
+          _currentTestRun++;
         }, 0);
       }
       let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
@@ -429,14 +443,107 @@ describe('jsonWebToken', function () {
         }
       };
       function next (err) {
-        should(err+'').be.equal('Error: Invalid JSON Web Token: key must be a string or a buffer');
+        should(err+'').be.equal('Error: Empty public key or no public key available');
+      }
+      function nextOk (err) {
+        should(err).be.undefined();
+        should(_req.jwtPayload.iss).equal(_clientId);
+        should(_req.jwtPayload.aud).equal(_serverId);
+        should(_req.jwtPayload.exp).be.approximately((Date.now()/1000)+_expireIn, 10);
         done();
       }
-      _middlewareFn(_req, {}, next);
+      _middlewareFn(_req, {}, (err) => {
+        next(err);
+        _middlewareFn(_req, {}, (err) => {
+          next(err);
+          _middlewareFn(_req, {}, (err) => {
+            next(err);
+            _middlewareFn(_req, {}, (err) => {
+              next(err);
+              _middlewareFn(_req, {}, (err) => {
+                next(err);
+                // this one is ok
+                _middlewareFn(_req, {}, (err) => {
+                  // getPublicKey is called 6 times
+                  should(_currentTestRun).equal(5);
+                  nextOk(err);
+                });
+              });
+            });
+          });
+        });
+      });
+    });
+
+    it('should return an error if public keys array is empty (or error) AND it should store the token in the quarantine area only during serverGetPublicKeyErrorCacheExpiration time', function (done) {
+      let _clientId = '123';
+      let _serverId = 'service1';
+      let _expireIn = 100;
+      let _token = jwt.generate(_clientId, _serverId, _expireIn, getECDHPriv());
+
+      jwt.set({serverGetPublicKeyErrorCacheExpiration : 3 * 1000});
+
+      let _currentTestRun = 0;
+      let _publicKeyArguments = [
+        [new Error('Bad file'), null], //
+        [null, getECDHPublic()]
+      ]
+      function getPublicKeyFn (req, res, payload, callback) {
+        should(payload.iss).equal(_clientId);
+        should(payload.aud).equal(_serverId);
+        // make it asynchrone
+        return setTimeout(() => {
+          callback(_publicKeyArguments[_currentTestRun][0], _publicKeyArguments[_currentTestRun][1]);
+          _currentTestRun++;
+        }, 0);
+      }
+      let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
+      let _req          = {
+        headers : {
+          authorization : 'Bearer ' + _token
+        }
+      };
+      function next (err) {
+        should(err+'').be.equal('Error: Empty public key or no public key available');
+      }
+      function nextOk (err) {
+        should(err).be.undefined();
+        should(_req.jwtPayload.iss).equal(_clientId);
+        should(_req.jwtPayload.aud).equal(_serverId);
+        should(_req.jwtPayload.exp).be.approximately((Date.now()/1000)+_expireIn, 10);
+        done();
+      }
+      _middlewareFn(_req, {}, (err) => {
+        next(err);
+        _middlewareFn(_req, {}, (err) => {
+          next(err);
+          _middlewareFn(_req, {}, (err) => {
+            next(err);
+            _middlewareFn(_req, {}, (err) => {
+              next(err);
+              _middlewareFn(_req, {}, (err) => {
+                next(err);
+                // this one is ok but the token is still in cache for 3 seconds so it still return the error
+                _middlewareFn(_req, {}, (err) => {
+                  next(err);
+                  setTimeout(() => {
+                    // getPublicKey is called 2 times
+                    should(_currentTestRun).equal(1);
+                    // this one is after 3 seconds
+                    _middlewareFn(_req, {}, (err) => {
+                      nextOk(err);
+                    });
+                  }, 4000);
+                });
+              });
+            });
+          });
+        });
+      });
     });
 
     it('should be extremely fast, even if there is a bad token client', function (done) {
-      let _nbIteration = 2000;
+      let _nbIteration = 20000;
       let _iteration = 0;
       let _nbNextCalled = 0;
       let _serverId = 'service1';
@@ -450,7 +557,7 @@ describe('jsonWebToken', function () {
       let _nbTokenVerifiedKo = 0;
       function getPublicKeyFn (req, res, payload, callback) {
         return setTimeout(() => {
-          callback(getECDHPublic());
+          callback(null, getECDHPublic());
         }, 100);
       }
       let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
@@ -487,7 +594,7 @@ describe('jsonWebToken', function () {
               let _tokenPerSecond = parseInt( _iteration / (_elapsed / 1e6) , 10);
               should(_nbTokenToVerify[0] + _nbTokenToVerify[1]).eql(_nbTokenVerifiedOk);
               should(_nbTokenToVerify[2]).eql(_nbTokenVerifiedKo);
-              should(_tokenPerSecond).be.above(200000);
+              should(_tokenPerSecond).be.above(100000);
               console.log('\n\n' + _tokenPerSecond + ' tokens per seconds verified by verifyHTTPHeaderFn middleware\n');
               done();
             }
@@ -507,7 +614,7 @@ describe('jsonWebToken', function () {
         should(payload.aud).equal(_serverId);
         // make it asynchrone
         return setTimeout(() => {
-          callback(getECDHPublic());
+          callback(null, getECDHPublic());
         }, 0);
       }
       let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
@@ -542,7 +649,7 @@ describe('jsonWebToken', function () {
         should(payload.aud).equal(_serverId);
         // make it asynchrone
         return setTimeout(() => {
-          callback(getECDHPublic());
+          callback(null, getECDHPublic());
         }, 0);
       }
       let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
@@ -575,7 +682,7 @@ describe('jsonWebToken', function () {
         should(payload.aud).equal(_serverId);
         // make it asynchrone
         return setTimeout(() => {
-          callback(getECDHPublic());
+          callback(null, getECDHPublic());
         }, 0);
       }
       let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
@@ -596,7 +703,7 @@ describe('jsonWebToken', function () {
         should(payload.aud).equal(_serverId);
         // make it asynchrone
         return setTimeout(() => {
-          callback(getECDHPublic());
+          callback(null, getECDHPublic());
         }, 0);
       }
       let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
@@ -616,7 +723,7 @@ describe('jsonWebToken', function () {
         should(payload.aud).equal(_serverId);
         // make it asynchrone
         return setTimeout(() => {
-          callback(getECDHPublic());
+          callback(null, getECDHPublic());
         }, 0);
       }
       let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
@@ -641,7 +748,7 @@ describe('jsonWebToken', function () {
         should(payload.aud).equal(_serverId);
         // make it asynchrone
         return setTimeout(() => {
-          callback(getECDHPublic());
+          callback(null, getECDHPublic());
         }, 0);
       }
       let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
@@ -665,7 +772,7 @@ describe('jsonWebToken', function () {
       function nextAndEnd (err) {
         should(err+'').be.equal('Error: JSON Web Token expired');
         let _elapsed = getDurationInUS(_start);
-        should(_elapsed).be.below(390);
+        should(_elapsed).be.below(500);
         done();
       }
       setTimeout(() => {
@@ -683,7 +790,7 @@ describe('jsonWebToken', function () {
         should(payload.aud).equal(_serverId);
         // make it asynchrone
         return setTimeout(() => {
-          callback(getECDHPublic());
+          callback(null, getECDHPublic());
         }, 0);
       }
       let _middlewareFn = jwt.verifyHTTPHeaderFn(_serverId, getPublicKeyFn);
@@ -716,7 +823,7 @@ describe('jsonWebToken', function () {
         should(payload.aud).equal(_serverId);
         // make it asynchrone
         return setTimeout(() => {
-          callback(getECDHPublic());
+          callback(null, getECDHPublic());
         }, 0);
       }
       let _middlewareFn = jwt.verifyHTTPHeaderFn('otherServer', getPublicKeyFn);

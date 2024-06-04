@@ -9,6 +9,9 @@
   "plugins" : [
     "json"
   ],
+  "parserOptions": {
+    "ecmaVersion": 2022
+  },
   "extends": ["eslint:recommended"],
   "rules": {
     "radix"                         : [ "error", "always"    ], // Enforce use of radix for parseInt calls
@@ -46,6 +49,8 @@
     "key-spacing"                   : [ "warn" , { "beforeColon" : true,
                                                    "afterColon"  : true,
                                                    "align"       : "colon",
-                                                   "mode"        : "strict" }]                // Enforce whitespace before and after colon in object
+                                                   "mode"        : "strict" }],               // Enforce whitespace before and after colon in object
+    "no-var"                        :   "warn",
+    "prefer-const"                  : [ "warn", { "ignoreReadBeforeAssign": true } ]
   }
 }

@@ -155,7 +155,6 @@ describe('jsonWebToken', function () {
     });
   });
 
-
   describe('getToken()', function () {
     it('should generate a token and renew it automatically after 12-hour', function (done) {
       const _clientId = '123';

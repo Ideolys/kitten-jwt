@@ -25,8 +25,7 @@
     "should": "13.2.3",
     "timekeeper": "2.2.0",
     "eslint": "8.44.0",
-    "eslint-plugin-json": "^3",
-    "eslint-plugin-vue": "^9"
+    "eslint-plugin-json": "^3"
   },
   "dependencies": {
     "jwa": "2.0.0",

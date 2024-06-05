@@ -190,11 +190,9 @@ function parseToken (jwt, callback, now = Date.now()) {
   }
 
   if (_payload.exp && now > parseInt(_payload.exp, 10) * 1000) {
-    console.log('parse',{_payload});
     return callback(new Error('JSON Web Token expired'), _header, _payload);
   }
 
-  console.log('after_parse',{_payload});
   if (_payload.iss === '' || _payload.iss === undefined || _payload.iss === null) {
     return callback(new Error('JSON Web Token without issuer'));
   }
@@ -214,7 +212,6 @@ function parseToken (jwt, callback, now = Date.now()) {
  */
 function verifyToken (header, payload, tokenString, signature, publicKey, callback) {
   try {
-    console.log({header});
     const _isValidSignature = jwa(header?.alg || DEFAULT_ALGORITHM_NAME).verify(tokenString, signature, publicKey);
     // let _verifier = crypto.createVerify('RSA-SHA'+ALGORITHM_HASH).update(tokenString);
     // let _isValidSignature = _verifier.verify(publicKey, signature, 'base64');

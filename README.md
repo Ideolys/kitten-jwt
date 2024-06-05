@@ -45,11 +45,11 @@ Main purpose : to be plug'n'play for developers who do not have much of time.
 Using `request` module for example:
 
 ```js
-  var jwt = require('kitten-jwt');
+  const jwt = require('kitten-jwt');
 
   // Generate an ephemeral jwt token (short expiration date), auto-renewed every 12-hour by default
   // This function is very fast (uses cache), it can be called for every HTTP request
-  var token = jwt.getToken('client-id-1220202', 'server-app-name', 'privKeyOfTheClient');
+  const token = jwt.getToken(options, data);
 
   // Insert the token in HTTP Header, it will be parsed by jwt.verifyHTTPHeaderFn automatically
   request.setHeader('Authorization', 'Bearer ' + token); // "Bearer" keyword is optional
@@ -68,11 +68,11 @@ With `ExpressJS`:
 #### 2) On server-side 
 
 ```js
-  var jwt = require('kitten-jwt');
+  const jwt = require('kitten-jwt');
 
   // custom method to get the client public key, kitten-jwt caches the result automatically
   function getPublicKeyFn(req, res, payload, callback) {
-    var _clientId = payload.iss;
+    const _clientId = payload.iss;
     // do whatever you want: db query, file read to return the public key
     // it accepts an array of public key ['pubKeyOfTheClient1', 'pubKeyOfTheClient2']
     return callback(null /* error object*/, 'pubKeyOfTheClient');
@@ -122,16 +122,24 @@ can be used for another web-service which have the same clientId and public key.
 
 These functions uses cache to be as fast as possible
 
-* `jwt.getToken (clientId, serverId, privKey)`
+* `jwt.getToken (options, data)`
 
   Generate a token for the tuple clientId-serverId, which expires in about 12 hours (+- random)<br>
   Re-use this same token during about 12 hours if called more than twice<br>
   Generate a new token automatically before expiration (20-minute before) or if privKey change
-
-  - clientId  : JWT issuer, token.iss
-  - serverId  : JWT audience, token.aud
-  - privKey   : private key
-
+  - options : 
+    - header : {
+      $~~$alg,  $~~$:$~~$  algorithm name
+      $~~$typ,  $~~$:$~~$  type (defaults to 'JWT')
+      $~~$kid   $~~~$:$~~$ key id
+      },
+    - payload : {
+      $~~$clientId,  $~~~$:$~$ JWT issuer,   `token.iss`
+      $~~$serverId,  $~~$:$~$  JWT audience, `token.aud`
+    },
+    - privKey   : private key
+  - data : accessible in token.data
+<br/>
 * `jwt.verifyHTTPHeaderFn (serverId, getPublicKeyFn)`
 
   Generate a middleware `function(req, req, next)`<br>
@@ -149,14 +157,20 @@ These functions uses cache to be as fast as possible
 
 These APIs should **not be used directly in a web app because nothing is cached (slow)**.
 
-* `jwt.generate (clientId, serverId, expiresIn, privKey, data)` : generate a token
-
-  - clientId  : JWT issuer, token.iss
-  - serverId  : JWT audience, token.aud
-  - expiresIn : JWT duration in number of seconds
-  - privKey   : private key
-  - data      : accessible in token.data
-
+* `jwt.generate (options, data)` : generate a token
+  - options : 
+    - header : {
+      $~~$alg,  $~~$:$~~$  algorithm name
+      $~~$typ,  $~~$:$~~$  type (defaults to 'JWT')
+      $~~$kid   $~~~$:$~~$ key id
+      },
+    - payload : {
+      $~~$clientId,  $~~~$:$~$ JWT issuer,   `token.iss`
+      $~~$serverId,  $~~$:$~$  JWT audience, `token.aud`
+      $~~$expiresIn  $~~$:$~$  JWT duration in number of seconds, `token.exp`
+    },
+    - privKey   : private key
+  - data : accessible in token.data
   It returns a signed base64 url encoded string of the token.
 
 * `jwt.verify (jwt, pubKey, callback, now = Date.now())` : verify the signature of a token

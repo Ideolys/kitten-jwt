@@ -26,7 +26,6 @@ const params = {
 let clientCache = new cache({size : params.clientCacheSize});
 let serverCache = new cache({size : params.serverCacheSize});
 
-
 /**
  * Sets options
  *
@@ -112,9 +111,9 @@ function generateECDHKeys (outputDir, outputKeyName, callback) {
  *  payload : {
  *    clientId  : Mixed,
  *    serverId  : Mixed,
- *    expiresIn : Integer, // in seconds
- *  }
- *  privKey   : String, 
+ *    expiresIn : Integer  // in seconds
+ *  },
+ *  privKey   : String     //private key
  * }} options 
  *    
  * @param   {Mixed}   data 
@@ -247,39 +246,51 @@ function verify (jwt, publicKey, callback, now = Date.now()) {
 /**
  * Generate, use and renew the token automatically
  * 
- * @param  {Mixed}  clientId client id 
- * @param  {Mixed}  serverId server id
- * @param  {String} privKey  private key
- * @param  {Object} data     user data
+ * @param {{
+ *  header : {
+ *    alg : String,
+ *    typ : String,
+ *    kid : String
+ *  },
+ *  payload : {
+ *    clientId  : Mixed,
+ *    serverId  : Mixed
+ *  },
+ *  privKey   : String //private key
+ * }} options 
+ *    
+ * @param   {Object}  data user data
+ * @returns {String}  return the token
  */
-function getToken (clientId, serverId, privKey, data) {
-  const _cacheKey = clientId + '_' + serverId;
-
+function getToken (options, data) {
+  const _cacheKey    = options.payload.clientId + '_' + options.payload.serverId;
   const _cachedToken = clientCache.get(_cacheKey);
-  const _now = Date.now();
-  if ( _cachedToken !== undefined && _now < (_cachedToken.expireAt - params.clientRenewTokenBeforeExp) && _cachedToken.privKey === privKey ) {
+  const _now         = Date.now();
+  if ( 
+    _cachedToken !== undefined 
+      && _now < (_cachedToken.expireAt - params.clientRenewTokenBeforeExp) 
+        && _cachedToken.privKey === options.privKey 
+  ) {
     return _cachedToken.token;
   }
 
-  const options = {
+  const optionForTokenGeneration = {
+    ... options,
     payload : {
-      clientId,
-      serverId, 
+      ... options.payload,
       expiresIn : params.clientTokenExpiration
-    },
-    privKey
+    }
   };
-  const _newToken = generate(options, data);
+  const _newToken = generate(optionForTokenGeneration, data);
 
   clientCache.set(_cacheKey, {
     token    : _newToken,
-    privKey  : privKey,
+    privKey  : options.privKey,
     expireAt : _now + (params.clientTokenExpiration * 1000)
   });
 
   return _newToken;
 }
-
 
 /**
  * Verify token with a list of public keys
@@ -341,7 +352,6 @@ function parseCookie (cookie) {
   }
   return null;
 }
-
 
 /**
  * Generate a middleware for Express
@@ -426,4 +436,3 @@ module.exports = {
   parseCookie,
   generateAuto : getToken // deprecated
 };
-

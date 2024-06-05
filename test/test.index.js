@@ -3,7 +3,7 @@ const jwtVendor = require('jsonwebtoken');
 const jwt = require('../index.js');
 const tk = require('timekeeper');
 
-describe('jsonWebToken', function () {
+describe('jsonWebToken', () => {
   before(function () {
     jwt.set({ clientCacheSize : 255, serverCacheSize : 255, serverGetPublicKeyErrorCacheExpiration : 60 * 1000 });
   });
@@ -116,7 +116,7 @@ describe('jsonWebToken', function () {
           done();
         });
     });
-    it('should be fast enough', function (done) {
+    it('should be fast enough', done => {
       const _nbIteration = 500;
       let _iteration = 0;
       const _tokens = [];
@@ -140,12 +140,12 @@ describe('jsonWebToken', function () {
       done();
     });
   });
-  describe('parseCookie()', function () {
-    it('should not crash if cookie is undefined or null', function () {
+  describe('parseCookie()', () => {
+    it('should not crash if cookie is undefined or null', () => {
       should(jwt.parseCookie()).equal(null);
       should(jwt.parseCookie(null)).equal(null);
     });
-    it('should parse jwt in cookie', function () {
+    it('should parse jwt in cookie', () => {
       should(jwt.parseCookie('access_token=azertyu')).equal('azertyu');
       should(jwt.parseCookie('access_token=gfhjfdjfdkfk;Max-age=2019-01-01')).equal('gfhjfdjfdkfk');
       should(jwt.parseCookie('access_token=gfhjfdjfdkfk  ; Max-age=2019-01-01')).equal('gfhjfdjfdkfk');
@@ -155,72 +155,126 @@ describe('jsonWebToken', function () {
     });
   });
 
-  describe('getToken()', function () {
-    it('should generate a token and renew it automatically after 12-hour', function (done) {
-      const _clientId = '123';
-      const _serverId = 'service1';
-      const _expireIn = 60 * 60 * 12;
-      const _token = jwt.getToken(_clientId, _serverId, getECDHPriv());
+  describe('getToken()', () => {
+    it('should generate a token and renew it automatically after 12-hour', done => {
+      const _expiresIn = 60 * 60 * 12;
+      const options = {
+        payload : {
+          clientId : '123',
+          serverId : 'service1'
+        },
+        privKey : getECDHPriv()
+      };
+      const _token = jwt.getToken(options);
       let _payload = getPayload(_token);
-      should(_payload.iss).equal(_clientId);
-      should(_payload.aud).equal(_serverId);
-      should(_payload.exp).be.approximately((Date.now() / 1000) + _expireIn, 10);
+      should(_payload.iss).equal(options.payload.clientId);
+      should(_payload.aud).equal(options.payload.serverId);
+      should(_payload.exp).be.approximately((Date.now() / 1000) + _expiresIn, 10);
       // travel in time start + 5 hours
       tk.travel(new Date(Date.now() + 60 * 60 * 5 * 1000));
-      let _newToken = jwt.getToken(_clientId, _serverId, getECDHPriv());
+      let _newToken = jwt.getToken(options);
       should(_token).equal(_newToken);
       // travel in time start + 7 hours
       tk.travel(new Date(Date.now() + 60 * 60 * 2 * 1000));
-      _newToken = jwt.getToken(_clientId, _serverId, getECDHPriv());
+      _newToken = jwt.getToken(options);
       should(_token).equal(_newToken);
       // travel in time start + 13 hours
       tk.travel(new Date(Date.now() + 60 * 60 * 6 * 1000));
-      const _newToken2 = jwt.getToken(_clientId, _serverId, getECDHPriv());
+      const _newToken2 = jwt.getToken(options);
       _payload = getPayload(_newToken2);
-      should(_payload.exp).be.approximately((Date.now() / 1000) + _expireIn, 100);
+      should(_payload.exp).be.approximately((Date.now() / 1000) + _expiresIn, 100);
       should(_token).not.equal(_newToken2);
       // travel in time now + 2 hours
       tk.travel(new Date(Date.now() + 60 * 60 * 2 * 1000));
-      const _newToken3 = jwt.getToken(_clientId, _serverId, getECDHPriv());
+      const _newToken3 = jwt.getToken(options);
       should(_newToken2).equal(_newToken3);
       done();
     });
-    it('should be extremly fast', function (done) {
+    it('should generate a token with custom alg and renew it automatically after 12-hour', done => {
+      const _expiresIn = 60 * 60 * 12;
+      const priv       = getRSAPriv().split(String.raw`\n`).join('\n');
+      const options    = {
+        header : {
+          alg : 'RS256',
+          kid : '45560071F1834ADA450C9260B562741DAE0B6C8B'
+        },
+        payload : {
+          clientId : '123',
+          serverId : 'service1'
+        },
+        privKey : priv,
+      };
+      const _token = jwt.getToken(options);
+      let _payload = getPayload(_token);
+      should(_payload.iss).equal(options.payload.clientId);
+      should(_payload.aud).equal(options.payload.serverId);
+      should(_payload.exp).be.approximately((Date.now() / 1000) + _expiresIn, 10);
+      // travel in time start + 5 hours
+      tk.travel(new Date(Date.now() + 60 * 60 * 5 * 1000));
+      let _newToken = jwt.getToken(options);
+      should(_token).equal(_newToken);
+      // travel in time start + 7 hours
+      tk.travel(new Date(Date.now() + 60 * 60 * 2 * 1000));
+      _newToken = jwt.getToken(options);
+      should(_token).equal(_newToken);
+      // travel in time start + 13 hours
+      tk.travel(new Date(Date.now() + 60 * 60 * 6 * 1000));
+      const _newToken2 = jwt.getToken(options);
+      _payload = getPayload(_newToken2);
+      should(_payload.exp).be.approximately((Date.now() / 1000) + _expiresIn, 100);
+      should(_token).not.equal(_newToken2);
+      // travel in time now + 2 hours
+      tk.travel(new Date(Date.now() + 60 * 60 * 2 * 1000));
+      const _newToken3 = jwt.getToken(options);
+      should(_newToken2).equal(_newToken3);
+      done();
+    });
+    it('should be extremly fast', done => {
       const _nbIteration = 2000;
-      let _iteration = 0;
+      let _iteration     = 0;
       const _tokens = [];
-      const _clientId = '123';
-      const _serverId = 'service1';
+      const options = {
+        payload : {
+          clientId : '123',
+          serverId : 'service1'
+        },
+        privKey : getECDHPriv()
+      };
       const _start = process.hrtime();
       while (_iteration < _nbIteration) {
         _iteration++;
-        _tokens.push(jwt.getToken(_clientId, _serverId, getECDHPriv()));
+        _tokens.push(jwt.getToken(options));
       }
-      const _elapsed = getDurationInUS(_start);
+      const _elapsed        = getDurationInUS(_start);
       const _tokenPerSecond = parseInt(_iteration / (_elapsed / 1e6), 10);
       should(_tokenPerSecond).be.above(450000);
       console.log('\n\n' + _tokenPerSecond + ' tokens per seconds with getToken\n');
       done();
     });
-    it('should return data in token', function (done) {
-      const _clientId = '123';
-      const _serverId = 'service1';
+    it('should return data in token', done => {
       const _data = {
         id   : 1,
         name : 'test'
       };
-      const _token = jwt.getToken(_clientId, _serverId, getECDHPriv(), _data);
+      const options = {
+        payload : {
+          clientId : '123',
+          serverId : 'service1'
+        },
+        privKey : getECDHPriv()
+      };
+      const _token = jwt.getToken(options, _data);
       jwt.verify(_token, getECDHPublic(), (err, payload) => {
         should(err).be.null();
-        should(payload.iss).equal(_clientId);
-        should(payload.aud).equal(_serverId);
+        should(payload.iss).equal(options.payload.clientId);
+        should(payload.aud).equal(options.payload.serverId);
         should.deepEqual(payload.data, _data);
         done();
       });
     });
   });
-  describe('verify()', function () {
-    it('should verify a valid token', function (done) {
+  describe('verify()', () => {
+    it('should verify a valid token', done => {
       const options = {
         payload : {
           clientId  : '123',
@@ -295,7 +349,7 @@ describe('jsonWebToken', function () {
         done();
       });
     });
-    it('should return an error if the token is expired', function (done) {
+    it('should return an error if the token is expired', done => {
       const options = {
         payload : {
           clientId  : '123',
@@ -320,7 +374,7 @@ describe('jsonWebToken', function () {
         }, 1200);
       });
     });
-    it('should accept a parameter to set the current date', function (done) {
+    it('should accept a parameter to set the current date', done => {
       const _customNow = Date.now() - 86500 * 1000;
       const options = {
         payload : {
@@ -342,14 +396,14 @@ describe('jsonWebToken', function () {
         }, _customNow + 200 * 1000);
       }, _customNow);
     });
-    it('should return an error if the token cannot be parsed', function (done) {
+    it('should return an error if the token cannot be parsed', done => {
       const _token = 'ccc';
       jwt.verify(_token, getECDHPublic(), (err) => {
         should(err + '').equal('Error: Invalid JSON Web Token: Not enough or too many segments');
         done();
       });
     });
-    it('should return an error if the token cannot be parsed', function (done) {
+    it('should return an error if the token cannot be parsed', done => {
       const _token = '..{"toto" : "titi"}';
       jwt.verify(_token, getECDHPublic(), (err) => {
         should(err + '').equal('Error: Invalid JSON Web Token: Unexpected end of JSON input');
@@ -418,7 +472,7 @@ describe('jsonWebToken', function () {
       });
     });
   });
-  describe('verifyHTTPHeaderFn()', function () {
+  describe('verifyHTTPHeaderFn()', () => {
     it('should generate a function which verify Token', done => {
       const options = {
         payload : {
@@ -752,11 +806,11 @@ describe('jsonWebToken', function () {
       const _req = { headers : { authorization : '' } };
       // pre-warm cache
       _req.headers.authorization = _tokens[0];
-      _middlewareFn(_req, {}, function () {
+      _middlewareFn(_req, {}, () => {
         _req.headers.authorization = _tokens[1];
-        _middlewareFn(_req, {}, function () {
+        _middlewareFn(_req, {}, () => {
           _req.headers.authorization = _tokens[2];
-          _middlewareFn(_req, {}, function () {
+          _middlewareFn(_req, {}, () => {
             const _start = process.hrtime();
             while (_iteration < _nbIteration) {
               _iteration++;
@@ -893,7 +947,7 @@ describe('jsonWebToken', function () {
       }
       _middlewareFn(_req, {}, next);
     });
-    it('should return an error if http Authorization header is undefined', function (done) {
+    it('should return an error if http Authorization header is undefined', done => {
       const _clientId = '123';
       const _serverId = 'service1';
       function getPublicKeyFn (req, res, payload, callback) {
@@ -912,7 +966,7 @@ describe('jsonWebToken', function () {
       }
       _middlewareFn(_req, {}, next);
     });
-    it('should return an error if http Authorization header is null (it should not crash)', function (done) {
+    it('should return an error if http Authorization header is null (it should not crash)', done => {
       const _clientId = '123';
       const _serverId = 'service1';
 
@@ -934,7 +988,7 @@ describe('jsonWebToken', function () {
       }
       _middlewareFn(_req, {}, next);
     });
-    it('should return an error if the token is expired. And it should be faster the second time (cache)', function (done) {
+    it('should return an error if the token is expired. And it should be faster the second time (cache)', done => {
       const options = {
         payload : {
           clientId  : '123',
@@ -982,7 +1036,7 @@ describe('jsonWebToken', function () {
         _middlewareFn(_req, {}, next);
       }, 1200);
     });
-    it('should return an error if the token is expired, even is it cached (NOT THE SAME TEST AS ABOVE)', function (done) {
+    it('should return an error if the token is expired, even is it cached (NOT THE SAME TEST AS ABOVE)', done => {
       const options = {
         payload : {
           clientId  : '123',
@@ -1020,7 +1074,7 @@ describe('jsonWebToken', function () {
         }, 1200);
       });
     });
-    it('should return an error if the audience is not valid', function (done) {
+    it('should return an error if the audience is not valid', done => {
       const options = {
         payload : {
           clientId  : '123',
@@ -1169,4 +1223,3 @@ function getDurationInUS (time) {
   const _interval = process.hrtime(time);
   return _interval[0] * 1e6 + parseInt(_interval[1] / 1e3, 10);
 }
-

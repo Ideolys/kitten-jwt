@@ -207,6 +207,13 @@ These APIs should **not be used directly in a web app because nothing is cached 
 
 ## CHANGELOG
 
+**3.0.1**
+
+- BREAKING CHANGES: 
+  - `generate` must be called with two arguments: `generate(options, data)`
+  - `getToken` must be called with two arguments: `getToken(options, data)`
+
+
 **2.0.0**
 
 - BREAKING CHANGE: `getPublicKeyFn(req, res, payload, callback)` must call the callback with two arguments: `callback(err, publicKeys)`

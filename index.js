@@ -126,18 +126,27 @@ function generate (options, data) {
     typ : options?.header?.typ || 'JWT',
     ...(options?.header?.kid) && { kid : options.header.kid },
   };
+
   // generate a compact token must be compact
-  const _token = {
+  const _payloadObject = Object.assign({
     iss : options.payload.clientId,
     aud : options.payload.serverId,
     exp : (_now + options.payload.expiresIn)
-  };
+  }, options.payload);
+  
+  // deletion of already assigned keys to avoid duplication
+  const {
+    clientId,
+    serverId,
+    expiresIn, 
+    ... _payload 
+  } = _payloadObject;
 
   if (data) {
-    _token.data = data;
+    _payload.data = data;
   }
   
-  const _tokenString = base64urlEncode(JSON.stringify(_header))+'.'+base64urlEncode(JSON.stringify(_token));
+  const _tokenString = base64urlEncode(JSON.stringify(_header))+'.'+base64urlEncode(JSON.stringify(_payload));
   const _signature   = jwa(options?.header?.alg || DEFAULT_ALGORITHM_NAME).sign(_tokenString, options.privKey);
   // I should be able to use only nodejs, but there is something which does not follow RFCs
   // let _signature = crypto.createSign('SHA'+ALGORITHM_HASH).update(_tokenString).sign(privKey, 'base64');

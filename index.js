@@ -435,13 +435,14 @@ function resetCache () {
 }
 
 module.exports = {
+  generate,
+  generateECDHKeys,
+  getToken,
+  parseCookie,
+  parseToken,
+  resetCache,
   set,
   verify,
   verifyHTTPHeaderFn,
-  generate,
-  getToken,
-  resetCache,
-  generateECDHKeys,
-  parseCookie,
   generateAuto : getToken // deprecated
 };

@@ -8,8 +8,8 @@ Keep It Simple, Stupid, Secure and Fast JWT module
 - Performance & Security focused
 - Light, low dependency
 
-Most of the time people use node-jsonwebtoken and express-jwt without using a cache mechanism to verify tokens. 
-This requires a lot of CPU on the server side for each request! 
+Most of the time people use node-jsonwebtoken and express-jwt without using a cache mechanism to verify tokens.
+This requires a lot of CPU on the server side for each request!
 On client-side, the token is generated once with an infinite expiration timestamp, which is not very secure.
 The first purpose of this module is to solve these two problems.
 
@@ -60,12 +60,12 @@ Or, if your client is a browser, store the JWT in a `cookie` instead of `Authori
 With `ExpressJS`:
 
 ```js
-  // let the browser send it back automatically. 
+  // let the browser send it back automatically.
   // Do not forget to refresh it before the 12-hour expiration
   response.cookie('access_token', token);
 ```
 
-#### 2) On server-side 
+#### 2) On server-side
 
 ```js
   const jwt = require('kitten-jwt');
@@ -148,7 +148,7 @@ These functions uses cache to be as fast as possible
   Generate a middleware `function(req, req, next)`<br>
   Verify and set `req.jwtPayload`
 
-  - getPublicKeyFn    : Function(req, res, payload, callback) which must call the `callback(err, String|Array)` where 
+  - getPublicKeyFn    : Function(req, res, payload, callback) which must call the `callback(err, String|Array)` where
                         the second parameter is either a string (one public key) or an array of strings (multiple public key to test)
   - serverId          : JWT audience, token.aud
   if the token is invalid, next(err) is called. Thus you can catch the error in another 4-parameter middlewares.
@@ -207,13 +207,13 @@ These APIs should **not be used directly in a web app because nothing is cached 
 
 ## CHANGELOG
 
-**3.0.2**
+**3.1.0**
 
 - expose function `parseToken`
 
 **3.0.1**
 
-- BREAKING CHANGES: 
+- BREAKING CHANGES:
   - `generate` must be called with two arguments: `generate(options, data)`
   - `getToken` must be called with two arguments: `getToken(options, data)`
 
@@ -248,11 +248,11 @@ These APIs should **not be used directly in a web app because nothing is cached 
 - Accepts token without key word "Bearer"
 
 
-## Notes 
+## Notes
 
 TODO :
 
-- Check if we are faster than https://github.com/nearform/fast-jwt 
+- Check if we are faster than https://github.com/nearform/fast-jwt
 - Add the ed25516 algorithm (faster)
 - to save extra bandwidth:  kitten-jwt accepts and generate tokens with one-letter header instead of RFCs JWT header (optional)
 - Make expiration a little bit random

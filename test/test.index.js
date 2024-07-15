@@ -154,7 +154,6 @@ describe('jsonWebToken', () => {
       should(jwt.parseCookie('otherkey=12233;  access_token   =   gfhjfdjfdkfk  ; Max-age=2019-01-01')).equal('gfhjfdjfdkfk');
     });
   });
-
   describe('getToken()', () => {
     it('should generate a token and renew it automatically after 12-hour', done => {
       const _expiresIn = 60 * 60 * 12;
@@ -269,6 +268,39 @@ describe('jsonWebToken', () => {
         should(payload.iss).equal(options.payload.clientId);
         should(payload.aud).equal(options.payload.serverId);
         should.deepEqual(payload.data, _data);
+        done();
+      });
+    });
+  });
+  describe('parseToken()', () => {
+    // single test to verify that the function is exported
+    // otherwise, `parseToken()` is the core function of `verify()`
+    it('should parse a valid token', done => {
+      const options = {
+        header : {
+          alg : 'RS256',
+          typ : 'JWT' 
+        },
+        payload : {
+          clientId  : '123',
+          serverId  : 'service1',
+          expiresIn : 30,
+        },
+        privKey : getECDHPriv()
+      };
+      const _token = jwt.generate(options);
+
+      jwt.parseToken(_token, (err, header, payload) => {
+        console.log({header});
+        console.log({payload});
+        should(err).be.null();
+        should(header.alg).equal(options.header.alg);
+        should(header.typ).equal(options.header.typ);
+        
+        should(payload.iss).equal(options.payload.clientId);
+        should(payload.aud).equal(options.payload.serverId);
+        should(payload.exp).be.approximately((Date.now() / 1000) + options.payload.expiresIn, 10);
+
         done();
       });
     });
@@ -507,7 +539,6 @@ describe('jsonWebToken', () => {
       }
       _middlewareFn(_req, {}, next);
     });
-
     it('should accepts tokens without Bearer keyword', done => {
       const options = {
         payload : {
@@ -542,7 +573,6 @@ describe('jsonWebToken', () => {
       }
       _middlewareFn(_req, {}, next);
     });
-
     it('should accepts an array of public keys and tests each one', done => {
       const options = {
         payload : {
@@ -581,7 +611,6 @@ describe('jsonWebToken', () => {
       }
       _middlewareFn(_req, {}, next);
     });
-
     it('should return an error if all public keys are invalid', done => {
       const options = {
         payload : {
@@ -617,7 +646,6 @@ describe('jsonWebToken', () => {
       }
       _middlewareFn(_req, {}, next);
     });
-
     it('should return an error if public keys array is empty (or error) and it should not store the token in the quarantine area if serverGetPublicKeyErrorCacheExpiration is deactivated', done => {
       const options = {
         payload : {
@@ -688,7 +716,6 @@ describe('jsonWebToken', () => {
         });
       });
     });
-
     it('should return an error if public keys array is empty (or error) AND it should store the token in the quarantine area only during serverGetPublicKeyErrorCacheExpiration time', done => {
       const options = {
         payload : {
@@ -760,7 +787,6 @@ describe('jsonWebToken', () => {
         });
       });
     });
-
     it('should be extremely fast, even if there is a bad token client', done => {
       const _nbIteration = 20000;
       let _iteration     = 0;

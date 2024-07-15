@@ -207,6 +207,10 @@ These APIs should **not be used directly in a web app because nothing is cached 
 
 ## CHANGELOG
 
+**3.0.2**
+
+- expose function `parseToken`
+
 **3.0.1**
 
 - BREAKING CHANGES: 

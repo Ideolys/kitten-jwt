@@ -291,8 +291,6 @@ describe('jsonWebToken', () => {
       const _token = jwt.generate(options);
 
       jwt.parseToken(_token, (err, header, payload) => {
-        console.log({header});
-        console.log({payload});
         should(err).be.null();
         should(header.alg).equal(options.header.alg);
         should(header.typ).equal(options.header.typ);

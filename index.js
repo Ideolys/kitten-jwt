@@ -6,7 +6,7 @@ const cache  = require('kitten-cache');
 const DEFAULT_ALGORITHM_BITS = '512';
 const DEFAULT_ALGORITHM_NAME = 'ES' + DEFAULT_ALGORITHM_BITS;
 const DEFAULT_ALGORITHM_SIGN = 'secp521r1'; // 'prime256v1';
-const ALLOWED_ALGORITHMS     = ['HS256', 'HS384', 'HS512', 'RS256', 'RS384', 'RS512', 'PS256', 'PS384', 'PS512', 'ES256', 'ES384', 'ES512'];
+const ALLOWED_ALGORITHMS     = ['HS256', 'HS384', 'HS512', 'RS256', 'RS384', 'RS512', 'PS256', 'PS384', 'PS512', 'ES256', 'ES384', 'ES512', 'none'];
 
 const TOKEN_COOKIE_REGEXP = /access_token\s*=([^;]+?)(?:;|$)/;
 

@@ -501,6 +501,26 @@ describe('jsonWebToken', () => {
         done();
       });
     });
+    it('should return an invalid signature error when algorithm is "none"', done => {
+      const _clientId = '123';
+      const _serverId = 'service1';
+      const _expireIn = 30;
+      const _expireAt = (Date.now() / 1000) + _expireIn;
+      const _token = jwtVendor.sign({ aud : _serverId, iss : _clientId, exp : _expireAt }, getECDHPriv(), { algorithm : 'ES512' });
+
+      const _noneHeader = {
+        alg : 'none',
+        typ : 'JWT',
+      };
+      const _tokenSegments = _token.split('.');
+      const _tokenBad      = base64urlEncode(JSON.stringify(_noneHeader)) + '.' + _tokenSegments[1] + '.' + _tokenSegments[2];
+
+      jwt.verify(_tokenBad, getECDHPublic(), (err, payload) => {
+        should(err + '').equal('Error: Invalid JSON Web Token signature');
+        should(payload).be.undefined();
+        done();
+      });
+    });
   });
   describe('verifyHTTPHeaderFn()', () => {
     it('should generate a function which verify Token', done => {
@@ -1236,6 +1256,15 @@ function getHeader (token, encoded) {
 
 function base64urlDecode (str) {
   return new Buffer(base64urlUnescape(str), 'base64').toString();
+}
+
+function base64urlEncode (str) {
+  return Buffer
+    .from(str, 'utf8')
+    .toString('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
 }
 
 function base64urlUnescape (str) {
